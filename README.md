@@ -1,4 +1,4 @@
-# habit_streak
+# medicine_management
 
 A new Flutter project.
 
