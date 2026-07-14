@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 import 'models/medication_state.dart';
 import 'screens/medication_list_screen.dart';
 import 'services/medication_store.dart';
+import 'services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.instance.init();
 
   final medicationState = MedicationState(MedicationStore());
   await medicationState.load();

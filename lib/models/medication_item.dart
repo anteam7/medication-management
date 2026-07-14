@@ -1,3 +1,4 @@
+import 'alarm_style.dart';
 import 'meal_timing.dart';
 import 'time_slot.dart';
 
@@ -45,6 +46,17 @@ class MedicationItem {
   /// [createdAt] or the adherence calendar.
   DateTime? receivedDate;
 
+  /// Alarm time (minutes since midnight) per slot key ([TimeSlot.name] or
+  /// [anySlotKey]) — a slot missing from this map simply has no alarm.
+  Map<String, int> alarmTimes;
+
+  /// How this medication's alarms notify — applies to all of its slots.
+  AlarmStyle alarmStyle;
+
+  /// Free-text note (e.g. dictated via voice input) — a single field that
+  /// gets overwritten, not a dated log.
+  String? memo;
+
   /// Keyed by yyyy-MM-dd (see date_key.dart), then by slot key
   /// (a [TimeSlot.name], or [anySlotKey] for medications with no specific
   /// time-of-day) so morning/lunch/evening doses can be checked off
@@ -59,9 +71,13 @@ class MedicationItem {
     this.mealTiming,
     DateTime? createdAt,
     this.receivedDate,
+    Map<String, int>? alarmTimes,
+    this.alarmStyle = AlarmStyle.gentleSound,
+    this.memo,
     Map<String, Map<String, MedicationCompletion>>? completions,
   })  : timeSlots = timeSlots ?? {},
         createdAt = createdAt ?? DateTime.now(),
+        alarmTimes = alarmTimes ?? {},
         completions = completions ?? {};
 
   Map<String, dynamic> toJson() => {
@@ -72,6 +88,9 @@ class MedicationItem {
         'mealTiming': mealTiming?.name,
         'createdAt': createdAt.toIso8601String(),
         'receivedDate': receivedDate?.toIso8601String(),
+        'alarmTimes': alarmTimes,
+        'alarmStyle': alarmStyle.name,
+        'memo': memo,
         'completions': completions.map(
           (date, bySlot) => MapEntry(
             date,
@@ -128,6 +147,15 @@ class MedicationItem {
 
     final rawReceivedDate = json['receivedDate'] as String?;
 
+    final rawAlarmTimes = (json['alarmTimes'] as Map<String, dynamic>?) ?? {};
+    final alarmTimes = rawAlarmTimes.map((k, v) => MapEntry(k, v as int));
+
+    final rawAlarmStyle = json['alarmStyle'] as String?;
+    final alarmStyle = AlarmStyle.values.firstWhere(
+      (s) => s.name == rawAlarmStyle,
+      orElse: () => AlarmStyle.gentleSound,
+    );
+
     return MedicationItem(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -136,6 +164,9 @@ class MedicationItem {
       mealTiming: mealTiming,
       createdAt: createdAt,
       receivedDate: rawReceivedDate == null ? null : DateTime.parse(rawReceivedDate),
+      alarmTimes: alarmTimes,
+      alarmStyle: alarmStyle,
+      memo: json['memo'] as String?,
       completions: completions,
     );
   }

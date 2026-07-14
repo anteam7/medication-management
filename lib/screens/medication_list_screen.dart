@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../models/alarm_style.dart';
 import '../models/meal_timing.dart';
 import '../models/medication_item.dart';
 import '../models/medication_state.dart';
 import '../models/time_slot.dart';
 import '../utils/date_key.dart';
+import '../widgets/simple_time_picker.dart';
 import 'add_medication_sheet.dart';
 import 'calendar_screen.dart';
 
@@ -18,12 +20,18 @@ typedef _AddResult = ({
   Set<TimeSlot> timeSlots,
   MealTiming? mealTiming,
   DateTime? receivedDate,
+  Map<String, int> alarmTimes,
+  AlarmStyle alarmStyle,
+  String? memo,
 });
 
 class MedicationListScreen extends StatelessWidget {
   const MedicationListScreen({super.key});
 
-  Future<void> _openAddSheet(BuildContext context, {MedicationItem? existing}) async {
+  Future<void> _openAddSheet(
+    BuildContext context, {
+    MedicationItem? existing,
+  }) async {
     final result = await showModalBottomSheet<_AddResult>(
       context: context,
       isScrollControlled: true,
@@ -39,6 +47,9 @@ class MedicationListScreen extends StatelessWidget {
         timeSlots: result.timeSlots,
         mealTiming: result.mealTiming,
         receivedDate: result.receivedDate,
+        alarmTimes: result.alarmTimes,
+        alarmStyle: result.alarmStyle,
+        memo: result.memo,
       );
     } else {
       await state.editItem(
@@ -48,49 +59,47 @@ class MedicationListScreen extends StatelessWidget {
         newTimeSlots: result.timeSlots,
         newMealTiming: result.mealTiming,
         newReceivedDate: result.receivedDate,
+        newAlarmTimes: result.alarmTimes,
+        newAlarmStyle: result.alarmStyle,
+        newMemo: result.memo,
       );
     }
   }
 
-  Future<void> _confirmWithPhoto(BuildContext context, MedicationItem item, TimeSlot? slot) async {
+  Future<void> _confirmWithPhoto(
+    BuildContext context,
+    MedicationItem item,
+    TimeSlot? slot,
+  ) async {
     final picker = ImagePicker();
-    final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    final photo = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+    );
     if (photo == null || !context.mounted) return;
-    await context.read<MedicationState>().completeToday(item.id, slot: slot, proofPhoto: photo);
-  }
-
-  void _showItemMenu(BuildContext context, MedicationItem item) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('수정'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _openAddSheet(context, existing: item);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete, color: Colors.redAccent),
-              title: const Text('삭제', style: TextStyle(color: Colors.redAccent)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await _deleteItem(context, item);
-              },
-            ),
-          ],
-        ),
-      ),
+    await context.read<MedicationState>().completeToday(
+      item.id,
+      slot: slot,
+      proofPhoto: photo,
     );
   }
 
-  /// Confirms then removes [item] entirely — including its other time-slot
-  /// sections, reference photo and full completion history.
-  Future<bool> _deleteItem(BuildContext context, MedicationItem item) async {
+  Future<void> _handleDelete(BuildContext context, MedicationItem item) async {
+    final confirmed = await _confirmDelete(context, item);
+    if (confirmed && context.mounted) {
+      await context.read<MedicationState>().removeItem(item.id);
+    }
+  }
+
+  /// Asks the user to confirm before deleting [item] entirely (including
+  /// its other time-slot sections, reference photo and full completion
+  /// history) — a pure yes/no decision with no side effects. Callers are
+  /// responsible for actually removing the item afterwards; in particular,
+  /// [Dismissible.confirmDismiss] must stay side-effect-free and let
+  /// [Dismissible.onDismissed] do the removal once its swipe animation
+  /// finishes, or the widget can be torn down mid-animation and the item
+  /// never actually gets removed from view.
+  Future<bool> _confirmDelete(BuildContext context, MedicationItem item) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -108,19 +117,20 @@ class MedicationListScreen extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed != true) return false;
-    if (context.mounted) {
-      await context.read<MedicationState>().removeItem(item.id);
-    }
-    return true;
+    return confirmed ?? false;
   }
 
   /// Items belonging to [slot] (or items with no time-of-day assigned, when
   /// [slot] is null) — a medication assigned to multiple slots shows up in
   /// each of its sections, checked off independently.
-  List<MedicationItem> _itemsForSlot(List<MedicationItem> items, TimeSlot? slot) {
+  List<MedicationItem> _itemsForSlot(
+    List<MedicationItem> items,
+    TimeSlot? slot,
+  ) {
     return items.where((item) {
-      return slot == null ? item.timeSlots.isEmpty : item.timeSlots.contains(slot);
+      return slot == null
+          ? item.timeSlots.isEmpty
+          : item.timeSlots.contains(slot);
     }).toList();
   }
 
@@ -135,23 +145,28 @@ class MedicationListScreen extends StatelessWidget {
           IconButton(
             tooltip: '복약 달력',
             icon: const Icon(Icons.calendar_month),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CalendarScreen()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const CalendarScreen())),
           ),
         ],
       ),
       body: !state.isLoaded
           ? const Center(child: CircularProgressIndicator())
           : state.items.isEmpty
-              ? _EmptyState(onAdd: () => _openAddSheet(context))
-              : ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: [
-                    for (final slot in [TimeSlot.morning, TimeSlot.lunch, TimeSlot.evening, null])
-                      ..._buildSection(context, state, slot),
-                  ],
-                ),
+          ? _EmptyState(onAdd: () => _openAddSheet(context))
+          : ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                for (final slot in [
+                  TimeSlot.morning,
+                  TimeSlot.lunch,
+                  TimeSlot.evening,
+                  null,
+                ])
+                  ..._buildSection(context, state, slot),
+              ],
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openAddSheet(context),
         child: const Icon(Icons.add),
@@ -159,7 +174,11 @@ class MedicationListScreen extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildSection(BuildContext context, MedicationState state, TimeSlot? slot) {
+  List<Widget> _buildSection(
+    BuildContext context,
+    MedicationState state,
+    TimeSlot? slot,
+  ) {
     final items = _itemsForSlot(state.items, slot);
     if (items.isEmpty) return const [];
 
@@ -169,9 +188,9 @@ class MedicationListScreen extends StatelessWidget {
         child: Text(
           slot?.label ?? '시간 미지정',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
         ),
       ),
       for (final item in items) ...[
@@ -187,10 +206,13 @@ class MedicationListScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: const Icon(Icons.delete, color: Colors.white),
           ),
-          confirmDismiss: (_) => _deleteItem(context, item),
+          confirmDismiss: (_) => _confirmDelete(context, item),
+          onDismissed: (_) =>
+              context.read<MedicationState>().removeItem(item.id),
           child: _MedicationTile(
             item: item,
             done: state.isCompletedForSlot(item, slot),
+            alarmMinutes: item.alarmTimes[slot?.name ?? anySlotKey],
             onTapCheck: () {
               final s = context.read<MedicationState>();
               state.isCompletedForSlot(item, slot)
@@ -198,7 +220,8 @@ class MedicationListScreen extends StatelessWidget {
                   : s.completeToday(item.id, slot: slot);
             },
             onPhotoCheck: () => _confirmWithPhoto(context, item, slot),
-            onLongPress: () => _showItemMenu(context, item),
+            onEdit: () => _openAddSheet(context, existing: item),
+            onDelete: () => _handleDelete(context, item),
           ),
         ),
         const SizedBox(height: 8),
@@ -235,60 +258,175 @@ class _EmptyState extends StatelessWidget {
 class _MedicationTile extends StatelessWidget {
   final MedicationItem item;
   final bool done;
+  final int? alarmMinutes;
   final VoidCallback onTapCheck;
   final VoidCallback onPhotoCheck;
-  final VoidCallback onLongPress;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   const _MedicationTile({
     required this.item,
     required this.done,
+    required this.alarmMinutes,
     required this.onTapCheck,
     required this.onPhotoCheck,
-    required this.onLongPress,
+    required this.onEdit,
+    required this.onDelete,
   });
+
+  void _showMemoDialog(BuildContext context, MedicationItem item) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${item.name} 메모'),
+        content: Text(item.memo ?? ''),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ListTile(
-        onLongPress: onLongPress,
-        leading: CircleAvatar(
-          radius: 22,
-          backgroundImage: item.referencePhotoPath != null
-              ? FileImage(File(item.referencePhotoPath!))
-              : null,
-          child: item.referencePhotoPath == null ? const Icon(Icons.medication) : null,
-        ),
-        title: Text(
-          item.name,
-          style: done
-              ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)
-              : null,
-        ),
-        subtitle: Text([
-          if (item.mealTiming != null) item.mealTiming!.label,
-          done ? '오늘 완료 ✅' : '오늘 미완료',
-          if (item.receivedDate != null) '받은날 ${dateKey(item.receivedDate!)}',
-        ].join(' · ')),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: '사진으로 확인',
-              icon: const Icon(Icons.camera_alt_outlined),
-              onPressed: onPhotoCheck,
-            ),
-            IconButton(
-              tooltip: done ? '완료 취소' : '체크',
-              icon: Icon(
-                done ? Icons.check_circle : Icons.check_circle_outline,
-                color: done ? Colors.green : null,
-              ),
-              onPressed: onTapCheck,
-            ),
-          ],
-        ),
+      child: Column(
+        children: [
+          _buildInfoTile(context),
+          const Divider(height: 1),
+          _buildActionRow(context),
+        ],
       ),
+    );
+  }
+
+  Widget _buildInfoTile(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        radius: 22,
+        backgroundImage: item.referencePhotoPath != null
+            ? FileImage(File(item.referencePhotoPath!))
+            : null,
+        child: item.referencePhotoPath == null
+            ? const Icon(Icons.medication)
+            : null,
+      ),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              item.name,
+              overflow: TextOverflow.ellipsis,
+              style: done
+                  ? const TextStyle(
+                      decoration: TextDecoration.lineThrough,
+                      color: Colors.grey,
+                    )
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              dDayLabel(item.receivedDate ?? item.createdAt),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
+      subtitle: Row(
+        children: [
+          if (item.memo != null && item.memo!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: InkWell(
+                onTap: () => _showMemoDialog(context, item),
+                child: Icon(
+                  Icons.sticky_note_2_outlined,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+          Expanded(
+            child: Text(
+              [
+                if (item.mealTiming != null) item.mealTiming!.label,
+                done ? '오늘 완료 ✅' : '오늘 미완료',
+                if (alarmMinutes != null) '🔔 ${formatMinutes(alarmMinutes!)}',
+                if (item.receivedDate != null)
+                  '받은날 ${dateKey(item.receivedDate!)}',
+              ].join(' · '),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionRow(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _ActionButton(
+          icon: Icons.camera_alt_outlined,
+          label: '사진',
+          onTap: onPhotoCheck,
+        ),
+        _ActionButton(
+          icon: done ? Icons.check_circle : Icons.check_circle_outline,
+          label: done ? '완료' : '체크',
+          color: done ? Colors.green : null,
+          onTap: onTapCheck,
+        ),
+        _ActionButton(icon: Icons.edit_outlined, label: '수정', onTap: onEdit),
+        _ActionButton(
+          icon: Icons.delete_outline,
+          label: '삭제',
+          color: Colors.redAccent,
+          onTap: onDelete,
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+  final VoidCallback onTap;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: color,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(label, style: const TextStyle(fontSize: 12)),
     );
   }
 }
