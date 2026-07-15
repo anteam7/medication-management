@@ -36,6 +36,16 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // flutter_local_notifications persists scheduled-alarm details
+            // via Gson, which relies on reflection/generic type info that
+            // R8's default code shrinking strips out — this silently broke
+            // pendingNotificationRequests()/alarm delivery in release builds
+            // ("Missing type parameter" RuntimeException from Gson). This is
+            // a personal sideloaded app, so the smaller APK/obfuscation
+            // minification buys isn't worth that class of bug.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

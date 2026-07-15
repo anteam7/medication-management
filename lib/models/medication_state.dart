@@ -20,6 +20,16 @@ class MedicationState extends ChangeNotifier {
     items = await _store.load();
     isLoaded = true;
     notifyListeners();
+
+    // Re-sync every alarm on each app start: this is what actually applies
+    // an exact-alarm permission the user granted after items were first
+    // created (existing alarms are otherwise never rescheduled), and it's a
+    // cheap, idempotent safety net against any other scheduling hiccup.
+    for (final item in items) {
+      try {
+        await NotificationService.instance.syncForItem(item);
+      } catch (_) {}
+    }
   }
 
   static String _slotKey(TimeSlot? slot) => slot?.name ?? anySlotKey;

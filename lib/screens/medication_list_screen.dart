@@ -9,8 +9,10 @@ import '../models/meal_timing.dart';
 import '../models/medication_item.dart';
 import '../models/medication_state.dart';
 import '../models/time_slot.dart';
+import '../services/notification_service.dart';
 import '../utils/date_key.dart';
 import '../widgets/simple_time_picker.dart';
+import '../widgets/theme_picker_sheet.dart';
 import 'add_medication_sheet.dart';
 import 'calendar_screen.dart';
 
@@ -24,6 +26,8 @@ typedef _AddResult = ({
   AlarmStyle alarmStyle,
   String? memo,
 });
+
+enum _MenuAction { alarmDiagnostics, quickTestAlarm, theme, calendar }
 
 class MedicationListScreen extends StatelessWidget {
   const MedicationListScreen({super.key});
@@ -64,6 +68,79 @@ class MedicationListScreen extends StatelessWidget {
         newMemo: result.memo,
       );
     }
+  }
+
+  /// Sends an immediate test notification (so the user can watch for it)
+  /// and shows what's actually scheduled at the OS level, in one dialog —
+  /// this tells apart "the alarm never got scheduled" from "it's scheduled
+  /// but the OS/manufacturer battery settings are blocking delivery".
+  Future<void> _showAlarmDiagnostics(BuildContext context) async {
+    String? testError;
+    try {
+      await NotificationService.instance.showTestNotification();
+    } catch (e) {
+      testError = e.toString();
+    }
+
+    String report;
+    try {
+      report = await NotificationService.instance.diagnosticsReport();
+    } catch (e) {
+      // Belt-and-suspenders: even if a diagnostic check itself misbehaves,
+      // the user should see *something* rather than the button silently
+      // doing nothing.
+      report = '진단 정보를 가져오는 중 오류가 발생했습니다: $e';
+    }
+
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('알람 진단'),
+        content: SingleChildScrollView(
+          child: Text(
+            testError == null
+                ? '테스트 알림을 보냈습니다. 알림창에서 바로 확인하세요.\n\n$report'
+                : '테스트 알림 전송 실패: $testError\n\n$report',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
+        ],
+      ),
+    );
+  }
+
+  /// Schedules a real one-shot exact alarm ~1 minute out, using the exact
+  /// same delivery mechanism as daily medication alarms. Lets the user get
+  /// an answer in ~1 minute on whether *scheduled* delivery works at all on
+  /// this device, instead of waiting for the next real medication time —
+  /// isolating "exact-alarm delivery is broken/blocked" from "something
+  /// specific to the daily-repeat scheduling path".
+  Future<void> _runQuickTestAlarm(BuildContext context) async {
+    String message;
+    try {
+      final target = await NotificationService.instance.scheduleQuickTestAlarm();
+      final hh = target.hour.toString().padLeft(2, '0');
+      final mm = target.minute.toString().padLeft(2, '0');
+      final ss = target.second.toString().padLeft(2, '0');
+      message = '$hh:$mm:$ss 에 알람이 울리도록 예약했습니다.\n'
+          '그 시간에 화면을 보지 않아도 알림이 오는지 확인해주세요.';
+    } catch (e) {
+      message = '예약 실패: $e';
+    }
+
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('1분 테스트 알람'),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('확인')),
+        ],
+      ),
+    );
   }
 
   Future<void> _confirmWithPhoto(
@@ -142,12 +219,52 @@ class MedicationListScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('복약 관리'),
         actions: [
-          IconButton(
-            tooltip: '복약 달력',
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const CalendarScreen())),
+          PopupMenuButton<_MenuAction>(
+            tooltip: '더보기',
+            onSelected: (action) async {
+              switch (action) {
+                case _MenuAction.alarmDiagnostics:
+                  await _showAlarmDiagnostics(context);
+                case _MenuAction.quickTestAlarm:
+                  await _runQuickTestAlarm(context);
+                case _MenuAction.theme:
+                  showThemePickerSheet(context);
+                case _MenuAction.calendar:
+                  Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const CalendarScreen()));
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _MenuAction.alarmDiagnostics,
+                child: ListTile(
+                  leading: Icon(Icons.bug_report_outlined),
+                  title: Text('알람 진단'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _MenuAction.quickTestAlarm,
+                child: ListTile(
+                  leading: Icon(Icons.timer_outlined),
+                  title: Text('1분 테스트 알람'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _MenuAction.theme,
+                child: ListTile(
+                  leading: Icon(Icons.palette_outlined),
+                  title: Text('테마'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _MenuAction.calendar,
+                child: ListTile(
+                  leading: Icon(Icons.calendar_month),
+                  title: Text('복약 달력'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -314,6 +431,15 @@ class _MedicationTile extends StatelessWidget {
             ? const Icon(Icons.medication)
             : null,
       ),
+      // Sits opposite the reference-photo avatar on the leading side, so
+      // the one action taken every day is visually distinct from the
+      // manage-this-item actions (사진/수정/삭제) in the row below.
+      trailing: _ActionButton(
+        icon: done ? Icons.check_circle : Icons.check_circle_outline,
+        label: '수행 여부',
+        color: done ? Colors.green : null,
+        onTap: onTapCheck,
+      ),
       title: Row(
         children: [
           Flexible(
@@ -384,12 +510,6 @@ class _MedicationTile extends StatelessWidget {
           icon: Icons.camera_alt_outlined,
           label: '사진',
           onTap: onPhotoCheck,
-        ),
-        _ActionButton(
-          icon: done ? Icons.check_circle : Icons.check_circle_outline,
-          label: done ? '완료' : '체크',
-          color: done ? Colors.green : null,
-          onTap: onTapCheck,
         ),
         _ActionButton(icon: Icons.edit_outlined, label: '수정', onTap: onEdit),
         _ActionButton(
