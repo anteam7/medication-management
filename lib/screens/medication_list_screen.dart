@@ -15,6 +15,7 @@ import '../widgets/simple_time_picker.dart';
 import '../widgets/theme_picker_sheet.dart';
 import 'add_medication_sheet.dart';
 import 'calendar_screen.dart';
+import 'photo_match_screen.dart';
 
 typedef _AddResult = ({
   String name,
@@ -27,7 +28,7 @@ typedef _AddResult = ({
   String? memo,
 });
 
-enum _MenuAction { alarmDiagnostics, quickTestAlarm, theme, calendar }
+enum _MenuAction { alarmDiagnostics, quickTestAlarm }
 
 class MedicationListScreen extends StatelessWidget {
   const MedicationListScreen({super.key});
@@ -154,11 +155,40 @@ class MedicationListScreen extends StatelessWidget {
       imageQuality: 85,
     );
     if (photo == null || !context.mounted) return;
+
+    // The reference photo is guaranteed to exist here — this action only
+    // shows as "인증사진" (as opposed to "사진 등록") once one is set.
+    final confirmed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PhotoMatchScreen(
+          referencePhotoPath: item.referencePhotoPath!,
+          capturedPhoto: photo,
+        ),
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
     await context.read<MedicationState>().completeToday(
       item.id,
       slot: slot,
       proofPhoto: photo,
     );
+  }
+
+  /// Registers a reference photo for an item that doesn't have one yet —
+  /// the list tile's "사진" action means this until a reference photo
+  /// exists, then switches to [_confirmWithPhoto] (완료 인증사진) instead,
+  /// since the same camera icon previously always did the latter even for
+  /// items with no photo at all, silently accomplishing nothing the user
+  /// could see.
+  Future<void> _registerReferencePhoto(BuildContext context, MedicationItem item) async {
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (photo == null || !context.mounted) return;
+    await context.read<MedicationState>().setReferencePhoto(item.id, photo);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('약 사진이 등록되었습니다')));
   }
 
   Future<void> _handleDelete(BuildContext context, MedicationItem item) async {
@@ -219,6 +249,18 @@ class MedicationListScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('복약 관리'),
         actions: [
+          IconButton(
+            tooltip: '복약 달력',
+            icon: const Icon(Icons.calendar_month),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const CalendarScreen())),
+          ),
+          IconButton(
+            tooltip: '테마',
+            icon: const Icon(Icons.palette_outlined),
+            onPressed: () => showThemePickerSheet(context),
+          ),
           PopupMenuButton<_MenuAction>(
             tooltip: '더보기',
             onSelected: (action) async {
@@ -227,12 +269,6 @@ class MedicationListScreen extends StatelessWidget {
                   await _showAlarmDiagnostics(context);
                 case _MenuAction.quickTestAlarm:
                   await _runQuickTestAlarm(context);
-                case _MenuAction.theme:
-                  showThemePickerSheet(context);
-                case _MenuAction.calendar:
-                  Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const CalendarScreen()));
               }
             },
             itemBuilder: (context) => const [
@@ -248,20 +284,6 @@ class MedicationListScreen extends StatelessWidget {
                 child: ListTile(
                   leading: Icon(Icons.timer_outlined),
                   title: Text('1분 테스트 알람'),
-                ),
-              ),
-              PopupMenuItem(
-                value: _MenuAction.theme,
-                child: ListTile(
-                  leading: Icon(Icons.palette_outlined),
-                  title: Text('테마'),
-                ),
-              ),
-              PopupMenuItem(
-                value: _MenuAction.calendar,
-                child: ListTile(
-                  leading: Icon(Icons.calendar_month),
-                  title: Text('복약 달력'),
                 ),
               ),
             ],
@@ -336,7 +358,9 @@ class MedicationListScreen extends StatelessWidget {
                   ? s.uncompleteToday(item.id, slot: slot)
                   : s.completeToday(item.id, slot: slot);
             },
-            onPhotoCheck: () => _confirmWithPhoto(context, item, slot),
+            onPhotoCheck: () => item.referencePhotoPath == null
+                ? _registerReferencePhoto(context, item)
+                : _confirmWithPhoto(context, item, slot),
             onEdit: () => _openAddSheet(context, existing: item),
             onDelete: () => _handleDelete(context, item),
           ),
@@ -503,12 +527,13 @@ class _MedicationTile extends StatelessWidget {
   }
 
   Widget _buildActionRow(BuildContext context) {
+    final hasReferencePhoto = item.referencePhotoPath != null;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _ActionButton(
-          icon: Icons.camera_alt_outlined,
-          label: '사진',
+          icon: hasReferencePhoto ? Icons.camera_alt_outlined : Icons.add_a_photo_outlined,
+          label: hasReferencePhoto ? '인증사진' : '사진 등록',
           onTap: onPhotoCheck,
         ),
         _ActionButton(icon: Icons.edit_outlined, label: '수정', onTap: onEdit),

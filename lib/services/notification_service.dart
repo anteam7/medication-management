@@ -29,8 +29,37 @@ class NotificationService {
   /// Android notification channels: sound/vibration are fixed the first
   /// time a channel is created, so each [AlarmStyle] needs its own channel
   /// rather than varying those fields per-notification.
-  static const _vibrationChannelId = 'medication_alarm_vibration';
-  static const _gentleSoundChannelId = 'medication_alarm_gentle';
+  static const _channels = {
+    AlarmStyle.vibration: _ChannelSpec(
+      id: 'medication_alarm_vibration',
+      name: '복약 알람 (진동)',
+      description: '진동으로 복약 시간을 알려줍니다',
+    ),
+    AlarmStyle.gentleSound: _ChannelSpec(
+      id: 'medication_alarm_gentle',
+      name: '복약 알람 (잔잔한 소리)',
+      description: '잔잔한 소리와 진동으로 복약 시간을 알려줍니다',
+      soundResource: 'gentle_alarm',
+    ),
+    AlarmStyle.bell: _ChannelSpec(
+      id: 'medication_alarm_bell',
+      name: '복약 알람 (벨 소리)',
+      description: '벨 소리와 진동으로 복약 시간을 알려줍니다',
+      soundResource: 'bell_alarm',
+    ),
+    AlarmStyle.upbeat: _ChannelSpec(
+      id: 'medication_alarm_upbeat',
+      name: '복약 알람 (경쾌한 소리)',
+      description: '경쾌한 소리와 진동으로 복약 시간을 알려줍니다',
+      soundResource: 'upbeat_alarm',
+    ),
+    AlarmStyle.alert: _ChannelSpec(
+      id: 'medication_alarm_alert',
+      name: '복약 알람 (또렷한 알림음)',
+      description: '또렷한 알림음과 진동으로 복약 시간을 알려줍니다',
+      soundResource: 'alert_alarm',
+    ),
+  };
 
   Future<void> init() async {
     tzdata.initializeTimeZones();
@@ -48,25 +77,20 @@ class NotificationService {
     final androidPlugin = _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.requestNotificationsPermission();
-    await androidPlugin?.createNotificationChannel(AndroidNotificationChannel(
-      _vibrationChannelId,
-      '복약 알람 (진동)',
-      description: '진동으로 복약 시간을 알려줍니다',
-      importance: Importance.high,
-      playSound: false,
-      enableVibration: true,
-      vibrationPattern: _vibrationPattern,
-    ));
-    await androidPlugin?.createNotificationChannel(AndroidNotificationChannel(
-      _gentleSoundChannelId,
-      '복약 알람 (잔잔한 소리)',
-      description: '잔잔한 소리와 진동으로 복약 시간을 알려줍니다',
-      importance: Importance.high,
-      playSound: true,
-      sound: const RawResourceAndroidNotificationSound('gentle_alarm'),
-      enableVibration: true,
-      vibrationPattern: _vibrationPattern,
-    ));
+    for (final spec in _channels.values) {
+      await androidPlugin?.createNotificationChannel(AndroidNotificationChannel(
+        spec.id,
+        spec.name,
+        description: spec.description,
+        importance: Importance.high,
+        playSound: spec.soundResource != null,
+        sound: spec.soundResource == null
+            ? null
+            : RawResourceAndroidNotificationSound(spec.soundResource!),
+        enableVibration: true,
+        vibrationPattern: _vibrationPattern,
+      ));
+    }
 
     await _plugin
         .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
@@ -141,19 +165,20 @@ class NotificationService {
   /// permissions/channels are actually working, independent of any alarm
   /// scheduling or timezone logic.
   Future<void> showTestNotification() async {
+    final spec = _channels[AlarmStyle.gentleSound]!;
     await _plugin.show(
       _stableId('test', 'now'),
       '테스트 알림',
       '이 알림이 보이면 알림 권한과 설정은 정상입니다',
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          _gentleSoundChannelId,
-          '복약 알람 (잔잔한 소리)',
-          channelDescription: '잔잔한 소리와 진동으로 복약 시간을 알려줍니다',
+          spec.id,
+          spec.name,
+          channelDescription: spec.description,
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
     );
   }
@@ -164,6 +189,7 @@ class NotificationService {
   /// *scheduled* delivery works at all on this device — as opposed to
   /// [showTestNotification], which only proves immediate notifications work.
   Future<DateTime> scheduleQuickTestAlarm() async {
+    final spec = _channels[AlarmStyle.gentleSound]!;
     final target = tz.TZDateTime.now(tz.local).add(const Duration(minutes: 1));
     await _plugin.zonedSchedule(
       _stableId('quicktest', 'now'),
@@ -172,13 +198,13 @@ class NotificationService {
       target,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _gentleSoundChannelId,
-          '복약 알람 (잔잔한 소리)',
-          channelDescription: '잔잔한 소리와 진동으로 복약 시간을 알려줍니다',
+          spec.id,
+          spec.name,
+          channelDescription: spec.description,
           importance: Importance.high,
           priority: Priority.high,
           playSound: true,
-          sound: const RawResourceAndroidNotificationSound('gentle_alarm'),
+          sound: RawResourceAndroidNotificationSound(spec.soundResource!),
           enableVibration: true,
           vibrationPattern: _vibrationPattern,
         ),
@@ -216,29 +242,20 @@ class NotificationService {
         ? '${item.name} 복용할 시간입니다'
         : '$label · ${item.name} 복용할 시간입니다';
 
-    final isGentleSound = item.alarmStyle == AlarmStyle.gentleSound;
-    final androidDetails = isGentleSound
-        ? AndroidNotificationDetails(
-            _gentleSoundChannelId,
-            '복약 알람 (잔잔한 소리)',
-            channelDescription: '잔잔한 소리와 진동으로 복약 시간을 알려줍니다',
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            sound: const RawResourceAndroidNotificationSound('gentle_alarm'),
-            enableVibration: true,
-            vibrationPattern: _vibrationPattern,
-          )
-        : AndroidNotificationDetails(
-            _vibrationChannelId,
-            '복약 알람 (진동)',
-            channelDescription: '진동으로 복약 시간을 알려줍니다',
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: false,
-            enableVibration: true,
-            vibrationPattern: _vibrationPattern,
-          );
+    final spec = _channels[item.alarmStyle]!;
+    final androidDetails = AndroidNotificationDetails(
+      spec.id,
+      spec.name,
+      channelDescription: spec.description,
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: spec.soundResource != null,
+      sound: spec.soundResource == null
+          ? null
+          : RawResourceAndroidNotificationSound(spec.soundResource!),
+      enableVibration: true,
+      vibrationPattern: _vibrationPattern,
+    );
 
     await _plugin.zonedSchedule(
       _stableId(item.id, slotKey),
@@ -277,4 +294,22 @@ class NotificationService {
     }
     return hash;
   }
+}
+
+/// One Android notification channel's fixed identity — a channel's sound
+/// and vibration can't change after creation, so each [AlarmStyle] gets its
+/// own. [soundResource] is a raw resource name (no extension); null means
+/// vibration-only (no sound).
+class _ChannelSpec {
+  final String id;
+  final String name;
+  final String description;
+  final String? soundResource;
+
+  const _ChannelSpec({
+    required this.id,
+    required this.name,
+    required this.description,
+    this.soundResource,
+  });
 }

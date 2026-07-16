@@ -41,8 +41,11 @@ class HabitStreakApp extends StatelessWidget {
       title: '복약 관리',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(themeName, Brightness.light),
-      darkTheme: buildAppTheme(themeName, Brightness.dark),
-      themeMode: ThemeMode.system,
+      // Pinned to light regardless of the device's system setting — the
+      // themes (especially the bright/clean set) are designed and shown to
+      // the user as light-mode looks, and following system dark mode would
+      // silently swap in the dark palette instead.
+      themeMode: ThemeMode.light,
       home: const MedicationListScreen(),
     );
   }

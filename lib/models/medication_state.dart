@@ -112,6 +112,16 @@ class MedicationState extends ChangeNotifier {
     await NotificationService.instance.syncForItem(item);
   }
 
+  /// Registers/replaces just the reference photo for [id] — used by the
+  /// list screen's quick "사진 등록" action for items that don't have one
+  /// yet, without going through the full edit sheet.
+  Future<void> setReferencePhoto(String id, XFile photo) async {
+    final item = items.firstWhere((e) => e.id == id);
+    item.referencePhotoPath = await _store.savePhoto(photo, prefix: 'ref_$id');
+    notifyListeners();
+    await _store.save(items);
+  }
+
   Future<void> removeItem(String id) async {
     final index = items.indexWhere((e) => e.id == id);
     if (index == -1) return;

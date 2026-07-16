@@ -56,9 +56,9 @@ class _SimpleTimePickerDialogState extends State<_SimpleTimePickerDialog> {
             child: Text(':', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
           DropdownButton<int>(
-            value: _minute - (_minute % 5),
+            value: _minute,
             items: [
-              for (int m = 0; m < 60; m += 5)
+              for (int m = 0; m < 60; m++)
                 DropdownMenuItem(value: m, child: Text(m.toString().padLeft(2, '0'))),
             ],
             onChanged: (v) => setState(() => _minute = v!),

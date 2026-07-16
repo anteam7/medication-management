@@ -8,9 +8,11 @@ import 'package:image/image.dart' as img;
 
 void main() {
   const size = 1024;
-  final icon = img.Image(width: size, height: size, numChannels: 3);
+  // RGBA so everything outside the capsule can stay fully transparent
+  // (pixels default to (0,0,0,0)) instead of being filled with a background
+  // color — only the pill itself is drawn.
+  final icon = img.Image(width: size, height: size, numChannels: 4);
 
-  const background = (r: 224, g: 247, b: 250); // light mint
   const capsuleRed = (r: 229, g: 57, b: 53);
   const capsuleWhite = (r: 255, g: 255, b: 255);
   const divider = (r: 200, g: 200, b: 200);
@@ -40,10 +42,10 @@ void main() {
         final color = rx.abs() < dividerHalfWidth
             ? divider
             : (rx < 0 ? capsuleRed : capsuleWhite);
-        icon.setPixelRgb(x, y, color.r, color.g, color.b);
-      } else {
-        icon.setPixelRgb(x, y, background.r, background.g, background.b);
+        icon.setPixelRgba(x, y, color.r, color.g, color.b, 255);
       }
+      // Outside the capsule: leave the pixel at its default (0,0,0,0) —
+      // fully transparent, no background fill.
     }
   }
 
