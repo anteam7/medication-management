@@ -96,8 +96,10 @@ class MedicationState extends ChangeNotifier {
       item.name = newName.trim();
     }
     if (newReferencePhoto != null) {
+      final oldPhotoPath = item.referencePhotoPath;
       item.referencePhotoPath =
           await _store.savePhoto(newReferencePhoto, prefix: 'ref_$id');
+      await _store.deletePhoto(oldPhotoPath);
     }
     if (newTimeSlots != null) {
       item.timeSlots = newTimeSlots;
@@ -117,9 +119,11 @@ class MedicationState extends ChangeNotifier {
   /// yet, without going through the full edit sheet.
   Future<void> setReferencePhoto(String id, XFile photo) async {
     final item = items.firstWhere((e) => e.id == id);
+    final oldPhotoPath = item.referencePhotoPath;
     item.referencePhotoPath = await _store.savePhoto(photo, prefix: 'ref_$id');
     notifyListeners();
     await _store.save(items);
+    await _store.deletePhoto(oldPhotoPath);
   }
 
   Future<void> removeItem(String id) async {
@@ -136,6 +140,16 @@ class MedicationState extends ChangeNotifier {
     try {
       await NotificationService.instance.cancelAllForItem(item);
     } catch (_) {}
+
+    // The item is already gone from the list and storage — now clean up its
+    // photo files (reference + every completion's proof shot) so deleting a
+    // medication doesn't strand its images in permanent storage forever.
+    await _store.deletePhoto(item.referencePhotoPath);
+    for (final bySlot in item.completions.values) {
+      for (final completion in bySlot.values) {
+        await _store.deletePhoto(completion.proofPhotoPath);
+      }
+    }
   }
 
   /// Marks [id] done for today's [slot] (or the "any" slot when the
@@ -149,19 +163,26 @@ class MedicationState extends ChangeNotifier {
       proofPath = await _store.savePhoto(proofPhoto, prefix: 'proof_$id');
     }
     final today = item.completions.putIfAbsent(todayKey(), () => {});
+    final previous = today[_slotKey(slot)];
     today[_slotKey(slot)] = MedicationCompletion(
       method: proofPhoto != null ? CompletionMethod.photo : CompletionMethod.tap,
       proofPhotoPath: proofPath,
     );
     notifyListeners();
     await _store.save(items);
+    // Re-confirming a slot that already had a photo proof replaces the map
+    // entry — delete the now-unreferenced old proof file as well.
+    await _store.deletePhoto(previous?.proofPhotoPath);
   }
 
   /// Undoes an accidental tap/photo confirmation for today's [slot].
   Future<void> uncompleteToday(String id, {TimeSlot? slot}) async {
     final item = items.firstWhere((e) => e.id == id);
-    item.completions[todayKey()]?.remove(_slotKey(slot));
+    final removed = item.completions[todayKey()]?.remove(_slotKey(slot));
     notifyListeners();
     await _store.save(items);
+    // The undone completion's proof shot (if any) is no longer referenced
+    // by anything — delete the file too.
+    await _store.deletePhoto(removed?.proofPhotoPath);
   }
 }

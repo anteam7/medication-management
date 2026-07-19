@@ -16,15 +16,16 @@ class SpeechService {
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _available = false;
-  bool _initStarted = false;
   String? _koreanLocaleId;
   void Function(bool isListening)? _statusCallback;
 
   bool get isListening => _speech.isListening;
 
   Future<bool> init() async {
-    if (_initStarted) return _available;
-    _initStarted = true;
+    // Only a *successful* init is cached — a failed one (e.g. mic permission
+    // denied, then granted later in system settings) must stay retryable, or
+    // voice input would be dead until the app restarts.
+    if (_available) return true;
     _available = await _speech.initialize(
       onStatus: (_) => _statusCallback?.call(_speech.isListening),
     );

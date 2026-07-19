@@ -12,7 +12,15 @@ import 'services/theme_store.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await NotificationService.instance.init();
+  // Alarms are important but not worth bricking the whole app over — if the
+  // notification plugin fails to initialize (e.g. running on a desktop
+  // platform it doesn't support, or a platform-channel hiccup), the app
+  // should still start and let the user manage medications.
+  try {
+    await NotificationService.instance.init();
+  } catch (e) {
+    debugPrint('Notification init failed: $e');
+  }
 
   final medicationState = MedicationState(MedicationStore());
   await medicationState.load();

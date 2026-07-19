@@ -41,10 +41,27 @@ class MedicationStore {
     if (!await photosDir.exists()) {
       await photosDir.create(recursive: true);
     }
-    final ext = picked.path.split('.').last;
+    // Extension from the file name only — a naive split('.').last on the
+    // full path would return the whole path when the file has no extension
+    // (or pick up a dot from a directory name).
+    final baseName = picked.path.split(RegExp(r'[/\\]')).last;
+    final dot = baseName.lastIndexOf('.');
+    final ext = dot == -1 ? 'jpg' : baseName.substring(dot + 1);
     final fileName = '${prefix}_${DateTime.now().microsecondsSinceEpoch}.$ext';
     final destPath = '${photosDir.path}/$fileName';
     await File(picked.path).copy(destPath);
     return destPath;
+  }
+
+  /// Best-effort delete of a photo previously saved via [savePhoto], used
+  /// when a photo is replaced or its owning record is removed so orphaned
+  /// files don't pile up in permanent storage. Never throws — a missing or
+  /// undeletable file must not break the state change that triggered this.
+  Future<void> deletePhoto(String? path) async {
+    if (path == null) return;
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 }
