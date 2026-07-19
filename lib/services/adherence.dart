@@ -1,12 +1,14 @@
 import '../models/medication_item.dart';
 import '../utils/date_key.dart';
 
-enum DayStatus { future, noData, complete, missed }
+enum DayStatus { future, noData, pending, complete, missed }
 
 /// Summarizes whether every medication that existed by [day] had all of its
 /// assigned time slots (or the implicit "any" slot) checked off that day.
 /// Days before any medication was added come back as [DayStatus.noData]
-/// rather than [DayStatus.missed] — there was nothing to miss yet.
+/// rather than [DayStatus.missed] — there was nothing to miss yet. Today
+/// counts as [DayStatus.pending] (not missed) until everything is checked
+/// off — a dose that can still be taken hasn't been missed yet.
 DayStatus dayStatusFor(DateTime day, List<MedicationItem> items) {
   final today = dateOnly(DateTime.now());
   final d = dateOnly(day);
@@ -15,7 +17,8 @@ DayStatus dayStatusFor(DateTime day, List<MedicationItem> items) {
   final existedByThen = items.where((item) => !dateOnly(item.createdAt).isAfter(d));
   if (existedByThen.isEmpty) return DayStatus.noData;
 
-  return missedItemsFor(d, items).isEmpty ? DayStatus.complete : DayStatus.missed;
+  if (missedItemsFor(d, items).isEmpty) return DayStatus.complete;
+  return d == today ? DayStatus.pending : DayStatus.missed;
 }
 
 /// Medications that existed by [day] but weren't fully completed that day

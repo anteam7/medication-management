@@ -36,6 +36,36 @@ class _SimpleTimePickerDialogState extends State<_SimpleTimePickerDialog> {
   late int _hour = widget.initialMinutes ~/ 60;
   late int _minute = widget.initialMinutes % 60;
 
+  Widget _numberDropdown({
+    required int value,
+    required int count,
+    required ValueChanged<int> onChanged,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: DropdownButton<int>(
+        value: value,
+        underline: const SizedBox.shrink(),
+        borderRadius: BorderRadius.circular(14),
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        items: [
+          for (int i = 0; i < count; i++)
+            DropdownMenuItem(value: i, child: Text(i.toString().padLeft(2, '0'))),
+        ],
+        onChanged: (v) => onChanged(v!),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -43,25 +73,19 @@ class _SimpleTimePickerDialogState extends State<_SimpleTimePickerDialog> {
       content: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          DropdownButton<int>(
+          _numberDropdown(
             value: _hour,
-            items: [
-              for (int h = 0; h < 24; h++)
-                DropdownMenuItem(value: h, child: Text(h.toString().padLeft(2, '0'))),
-            ],
-            onChanged: (v) => setState(() => _hour = v!),
+            count: 24,
+            onChanged: (v) => setState(() => _hour = v),
           ),
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Text(':', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            padding: EdgeInsets.symmetric(horizontal: 10),
+            child: Text(':', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           ),
-          DropdownButton<int>(
+          _numberDropdown(
             value: _minute,
-            items: [
-              for (int m = 0; m < 60; m++)
-                DropdownMenuItem(value: m, child: Text(m.toString().padLeft(2, '0'))),
-            ],
-            onChanged: (v) => setState(() => _minute = v!),
+            count: 60,
+            onChanged: (v) => setState(() => _minute = v),
           ),
         ],
       ),

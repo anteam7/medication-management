@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../models/alarm_style.dart';
+import '../models/app_theme.dart';
+import '../models/app_theme_state.dart';
 import '../models/meal_timing.dart';
 import '../models/medication_item.dart';
 import '../models/medication_state.dart';
@@ -30,6 +32,16 @@ typedef _AddResult = ({
 
 enum _MenuAction { alarmDiagnostics, quickTestAlarm }
 
+/// Fixed per-slot identity (icon + color), independent of the active theme —
+/// like the calendar's green/red status colors — so 아침/점심/저녁 are
+/// recognizable at a glance no matter which theme is selected.
+(IconData, Color) _slotIdentity(TimeSlot? slot) => switch (slot) {
+      TimeSlot.morning => (Icons.wb_twilight, const Color(0xFFE08A3C)),
+      TimeSlot.lunch => (Icons.wb_sunny_outlined, const Color(0xFFD9A514)),
+      TimeSlot.evening => (Icons.nightlight_outlined, const Color(0xFF7B6FD0)),
+      null => (Icons.schedule_outlined, const Color(0xFF8A9296)),
+    };
+
 class MedicationListScreen extends StatelessWidget {
   const MedicationListScreen({super.key});
 
@@ -40,6 +52,7 @@ class MedicationListScreen extends StatelessWidget {
     final result = await showModalBottomSheet<_AddResult>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       builder: (_) => AddMedicationSheet(existing: existing),
     );
     if (result == null || !context.mounted) return;
@@ -144,16 +157,31 @@ class MedicationListScreen extends StatelessWidget {
     );
   }
 
+  /// Opens the camera, absorbing the PlatformException thrown when camera
+  /// access is denied/unavailable — the user gets a snackbar instead of a
+  /// silently unresponsive button.
+  Future<XFile?> _pickCameraPhoto(BuildContext context) async {
+    try {
+      return await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카메라를 열 수 없어요. 카메라 권한을 확인해주세요')),
+        );
+      }
+      return null;
+    }
+  }
+
   Future<void> _confirmWithPhoto(
     BuildContext context,
     MedicationItem item,
     TimeSlot? slot,
   ) async {
-    final picker = ImagePicker();
-    final photo = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
-    );
+    final photo = await _pickCameraPhoto(context);
     if (photo == null || !context.mounted) return;
 
     // The reference photo is guaranteed to exist here — this action only
@@ -182,8 +210,7 @@ class MedicationListScreen extends StatelessWidget {
   /// items with no photo at all, silently accomplishing nothing the user
   /// could see.
   Future<void> _registerReferencePhoto(BuildContext context, MedicationItem item) async {
-    final picker = ImagePicker();
-    final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    final photo = await _pickCameraPhoto(context);
     if (photo == null || !context.mounted) return;
     await context.read<MedicationState>().setReferencePhoto(item.id, photo);
     if (!context.mounted) return;
@@ -219,7 +246,8 @@ class MedicationListScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('삭제', style: TextStyle(color: Colors.redAccent)),
+            child: Text('삭제',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
           ),
         ],
       ),
@@ -244,6 +272,7 @@ class MedicationListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MedicationState>();
+    final themeName = context.watch<AppThemeState>().current;
 
     return Scaffold(
       appBar: AppBar(
@@ -251,7 +280,7 @@ class MedicationListScreen extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: '복약 달력',
-            icon: const Icon(Icons.calendar_month),
+            icon: const Icon(Icons.calendar_month_outlined),
             onPressed: () => Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (_) => const CalendarScreen())),
@@ -290,25 +319,32 @@ class MedicationListScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: !state.isLoaded
-          ? const Center(child: CircularProgressIndicator())
-          : state.items.isEmpty
-          ? _EmptyState(onAdd: () => _openAddSheet(context))
-          : ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                for (final slot in [
-                  TimeSlot.morning,
-                  TimeSlot.lunch,
-                  TimeSlot.evening,
-                  null,
-                ])
-                  ..._buildSection(context, state, slot),
-              ],
-            ),
-      floatingActionButton: FloatingActionButton(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: appBackgroundGradient(themeName, Theme.of(context).brightness),
+        ),
+        child: !state.isLoaded
+            ? const Center(child: CircularProgressIndicator())
+            : state.items.isEmpty
+            ? _EmptyState(onAdd: () => _openAddSheet(context))
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                children: [
+                  _TodayHeroCard(state: state),
+                  for (final slot in [
+                    TimeSlot.morning,
+                    TimeSlot.lunch,
+                    TimeSlot.evening,
+                    null,
+                  ])
+                    ..._buildSection(context, state, slot),
+                ],
+              ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openAddSheet(context),
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('약 추가'),
       ),
     );
   }
@@ -320,16 +356,30 @@ class MedicationListScreen extends StatelessWidget {
   ) {
     final items = _itemsForSlot(state.items, slot);
     if (items.isEmpty) return const [];
+    final (icon, color) = _slotIdentity(slot);
 
     return [
       Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-        child: Text(
-          slot?.label ?? '시간 미지정',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
-          ),
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+        child: Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: color),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              slot?.label ?? '시간 미지정',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(width: 6),
+            Text('${items.length}', style: Theme.of(context).textTheme.bodySmall),
+          ],
         ),
       ),
       for (final item in items) ...[
@@ -338,12 +388,12 @@ class MedicationListScreen extends StatelessWidget {
           direction: DismissDirection.endToStart,
           background: Container(
             decoration: BoxDecoration(
-              color: Colors.redAccent,
-              borderRadius: BorderRadius.circular(8),
+              color: Theme.of(context).colorScheme.error,
+              borderRadius: BorderRadius.circular(18),
             ),
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: const Icon(Icons.delete, color: Colors.white),
+            child: const Icon(Icons.delete_outline, color: Colors.white),
           ),
           confirmDismiss: (_) => _confirmDelete(context, item),
           onDismissed: (_) =>
@@ -365,9 +415,139 @@ class MedicationListScreen extends StatelessWidget {
             onDelete: () => _handleDelete(context, item),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
       ],
     ];
+  }
+}
+
+/// The screen's signature element: today's date, a context-aware greeting
+/// and a progress ring summarizing how much of today's medication is done —
+/// the one glance that answers "am I on track today?".
+class _TodayHeroCard extends StatelessWidget {
+  final MedicationState state;
+  const _TodayHeroCard({required this.state});
+
+  static const _weekdays = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+
+  String _greeting(int hour, bool allDone) {
+    if (allDone) return '오늘 복약을 모두 마쳤어요!';
+    if (hour < 5) return '늦은 밤이에요, 푹 쉬세요';
+    if (hour < 11) return '좋은 아침이에요';
+    if (hour < 14) return '점심 약 잊지 않으셨죠?';
+    if (hour < 18) return '오늘도 잘 챙기고 있어요';
+    return '저녁 약까지 마무리해요';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    int done = 0, total = 0;
+    for (final item in state.items) {
+      final slots = item.timeSlots.isEmpty
+          ? <TimeSlot?>[null]
+          : item.timeSlots.map<TimeSlot?>((s) => s).toList();
+      for (final slot in slots) {
+        total++;
+        if (state.isCompletedForSlot(item, slot)) done++;
+      }
+    }
+    final progress = total == 0 ? 0.0 : done / total;
+    final allDone = total > 0 && done == total;
+
+    final scheme = Theme.of(context).colorScheme;
+    final onAccent = scheme.onPrimary;
+    final now = DateTime.now();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 18, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scheme.primary,
+            Color.lerp(scheme.primary, Colors.black, 0.22)!,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.primary.withValues(alpha: 0.3),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${now.month}월 ${now.day}일 ${_weekdays[now.weekday - 1]}',
+                  style: TextStyle(
+                    color: onAccent.withValues(alpha: 0.75),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _greeting(now.hour, allDone),
+                  style: TextStyle(
+                    color: onAccent,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '오늘 복약 $done / $total',
+                  style: TextStyle(
+                    color: onAccent.withValues(alpha: 0.85),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 6,
+                    strokeCap: StrokeCap.round,
+                    color: onAccent,
+                    backgroundColor: onAccent.withValues(alpha: 0.25),
+                  ),
+                ),
+                allDone
+                    ? Icon(Icons.check_rounded, color: onAccent, size: 28)
+                    : Text(
+                        '${(progress * 100).round()}%',
+                        style: TextStyle(
+                          color: onAccent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -377,20 +557,47 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.medication_outlined, size: 64, color: Colors.grey),
-          const SizedBox(height: 12),
-          const Text('등록된 약이 없습니다'),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add),
-            label: const Text('약 추가'),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    scheme.primary.withValues(alpha: 0.85),
+                    Color.lerp(scheme.primary, Colors.black, 0.2)!,
+                  ],
+                ),
+              ),
+              child: Icon(Icons.medication_outlined,
+                  size: 44, color: scheme.onPrimary),
+            ),
+            const SizedBox(height: 20),
+            Text('아직 등록된 약이 없어요',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              '약을 추가하면 시간대별 체크와 알람,\n복용 달력 기록이 시작돼요',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: const Text('약 추가'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -434,9 +641,24 @@ class _MedicationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      // Margin zero so the swipe-to-delete background drawn by Dismissible
+      // lines up exactly with the card's rounded edges; spacing between
+      // tiles is handled by the list instead.
+      margin: EdgeInsets.zero,
       child: Column(
         children: [
-          _buildInfoTile(context),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            child: Row(
+              children: [
+                _buildPhoto(context),
+                const SizedBox(width: 12),
+                Expanded(child: _buildInfo(context)),
+                const SizedBox(width: 10),
+                _CheckButton(done: done, onTap: onTapCheck),
+              ],
+            ),
+          ),
           const Divider(height: 1),
           _buildActionRow(context),
         ],
@@ -444,85 +666,105 @@ class _MedicationTile extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoTile(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundImage: item.referencePhotoPath != null
-            ? FileImage(File(item.referencePhotoPath!))
-            : null,
-        child: item.referencePhotoPath == null
-            ? const Icon(Icons.medication)
-            : null,
+  Widget _buildPhoto(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final placeholder = Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
       ),
-      // Sits opposite the reference-photo avatar on the leading side, so
-      // the one action taken every day is visually distinct from the
-      // manage-this-item actions (사진/수정/삭제) in the row below.
-      trailing: _ActionButton(
-        icon: done ? Icons.check_circle : Icons.check_circle_outline,
-        label: '수행 여부',
-        color: done ? Colors.green : null,
-        onTap: onTapCheck,
+      child: Icon(Icons.medication_outlined, color: scheme.primary, size: 26),
+    );
+
+    final path = item.referencePhotoPath;
+    if (path == null) return placeholder;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Image.file(
+        File(path),
+        width: 54,
+        height: 54,
+        fit: BoxFit.cover,
+        // The stored path can go stale (file cleaned up or restored from a
+        // backup without its photos) — fall back to the icon placeholder
+        // instead of a render error.
+        errorBuilder: (_, _, _) => placeholder,
       ),
-      title: Row(
-        children: [
-          Flexible(
-            child: Text(
-              item.name,
-              overflow: TextOverflow.ellipsis,
-              style: done
-                  ? const TextStyle(
-                      decoration: TextDecoration.lineThrough,
-                      color: Colors.grey,
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              dDayLabel(item.receivedDate ?? item.createdAt),
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-              ),
-            ),
-          ),
-        ],
-      ),
-      subtitle: Row(
-        children: [
-          if (item.memo != null && item.memo!.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: InkWell(
-                onTap: () => _showMemoDialog(context, item),
-                child: Icon(
-                  Icons.sticky_note_2_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.primary,
+    );
+  }
+
+  Widget _buildInfo(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                item.name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                  decoration: done ? TextDecoration.lineThrough : null,
+                  color: done ? scheme.onSurfaceVariant : scheme.onSurface,
                 ),
               ),
             ),
-          Expanded(
-            child: Text(
-              [
-                if (item.mealTiming != null) item.mealTiming!.label,
-                done ? '오늘 완료 ✅' : '오늘 미완료',
-                if (alarmMinutes != null) '🔔 ${formatMinutes(alarmMinutes!)}',
-                if (item.receivedDate != null)
-                  '받은날 ${dateKey(item.receivedDate!)}',
-              ].join(' · '),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                dDayLabel(item.receivedDate ?? item.createdAt),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.primary,
+                ),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            if (item.mealTiming != null)
+              _MetaChip(
+                icon: Icons.restaurant_outlined,
+                label: item.mealTiming!.label,
+              ),
+            if (alarmMinutes != null)
+              _MetaChip(
+                icon: Icons.notifications_none_rounded,
+                label: formatMinutes(alarmMinutes!),
+              ),
+            if (item.receivedDate != null)
+              _MetaChip(
+                icon: Icons.event_available_outlined,
+                label: '받은날 ${dateKey(item.receivedDate!)}',
+              ),
+            if (item.memo != null && item.memo!.trim().isNotEmpty)
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _showMemoDialog(context, item),
+                child: const _MetaChip(
+                  icon: Icons.sticky_note_2_outlined,
+                  label: '메모',
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -532,7 +774,9 @@ class _MedicationTile extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _ActionButton(
-          icon: hasReferencePhoto ? Icons.camera_alt_outlined : Icons.add_a_photo_outlined,
+          icon: hasReferencePhoto
+              ? Icons.camera_alt_outlined
+              : Icons.add_a_photo_outlined,
           label: hasReferencePhoto ? '인증사진' : '사진 등록',
           onTap: onPhotoCheck,
         ),
@@ -540,10 +784,89 @@ class _MedicationTile extends StatelessWidget {
         _ActionButton(
           icon: Icons.delete_outline,
           label: '삭제',
-          color: Colors.redAccent,
+          color: Theme.of(context).colorScheme.error,
           onTap: onDelete,
         ),
       ],
+    );
+  }
+}
+
+/// The one action taken every day, made satisfying: a large circular toggle
+/// that fills with the theme's accent when today's dose is checked off.
+class _CheckButton extends StatelessWidget {
+  final bool done;
+  final VoidCallback onTap;
+  const _CheckButton({required this.done, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: done ? '오늘 복용 완료됨, 누르면 취소' : '오늘 복용 체크',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: done ? scheme.primary : Colors.transparent,
+            border: done
+                ? null
+                : Border.all(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                    width: 1.6,
+                  ),
+          ),
+          child: Icon(
+            Icons.check_rounded,
+            size: 24,
+            color: done
+                ? scheme.onPrimary
+                : scheme.onSurfaceVariant.withValues(alpha: 0.6),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small icon+label badge for a tile's secondary facts (식전/식후, alarm
+/// time, received date, memo) — quieter than dot-joined text and scannable.
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _MetaChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -566,7 +889,7 @@ class _ActionButton extends StatelessWidget {
     return TextButton.icon(
       onPressed: onTap,
       style: TextButton.styleFrom(
-        foregroundColor: color,
+        foregroundColor: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
         visualDensity: VisualDensity.compact,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),

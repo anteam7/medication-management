@@ -73,10 +73,22 @@ class _SimpleDatePickerDialogState extends State<_SimpleDatePickerDialog> {
           children: [
             Row(
               children: [
-                for (final w in const ['일', '월', '화', '수', '목', '금', '토'])
+                for (final (i, w) in const ['일', '월', '화', '수', '목', '금', '토'].indexed)
                   Expanded(
                     child: Center(
-                      child: Text(w, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      child: Text(
+                        w,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          // Korean calendar convention: Sunday red, Saturday blue.
+                          color: switch (i) {
+                            0 => const Color(0xFFD05B5B),
+                            6 => const Color(0xFF4A6FD0),
+                            _ => Theme.of(context).colorScheme.onSurfaceVariant,
+                          },
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -93,21 +105,24 @@ class _SimpleDatePickerDialogState extends State<_SimpleDatePickerDialog> {
                           date.month == _selected.month &&
                           date.day == _selected.day;
                       final disabled = date.isBefore(widget.firstDate) || date.isAfter(widget.lastDate);
+                      final scheme = Theme.of(context).colorScheme;
                       return GestureDetector(
                         onTap: disabled ? null : () => setState(() => _selected = date),
                         child: Container(
                           margin: const EdgeInsets.all(2),
                           decoration: BoxDecoration(
-                            color: isSelected ? Theme.of(context).colorScheme.primary : null,
-                            borderRadius: BorderRadius.circular(8),
+                            color: isSelected ? scheme.primary : null,
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           alignment: Alignment.center,
                           child: Text(
                             '$day',
                             style: TextStyle(
+                              fontWeight:
+                                  isSelected ? FontWeight.w700 : FontWeight.w500,
                               color: disabled
-                                  ? Colors.grey.shade400
-                                  : (isSelected ? Colors.white : null),
+                                  ? scheme.onSurfaceVariant.withValues(alpha: 0.35)
+                                  : (isSelected ? scheme.onPrimary : null),
                             ),
                           ),
                         ),

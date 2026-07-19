@@ -117,8 +117,18 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
   }
 
   Future<void> _pick(ImageSource source) async {
-    final file = await _picker.pickImage(source: source, imageQuality: 85);
-    if (file != null) setState(() => _pickedPhoto = file);
+    try {
+      final file = await _picker.pickImage(source: source, imageQuality: 85);
+      if (file != null) setState(() => _pickedPhoto = file);
+    } catch (_) {
+      // Permission denied / camera unavailable — tell the user instead of
+      // leaving the button silently unresponsive.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('사진을 가져올 수 없어요. 권한을 확인해주세요')),
+        );
+      }
+    }
   }
 
   void _submit() {
@@ -143,31 +153,79 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
     );
   }
 
+  Widget _micButton(String field, TextEditingController controller) {
+    final listening = _listeningField == field;
+    return IconButton(
+      tooltip: listening ? '녹음 중지' : '음성으로 입력',
+      icon: Icon(
+        listening ? Icons.mic : Icons.mic_none,
+        color: listening ? Theme.of(context).colorScheme.error : null,
+      ),
+      onPressed: () => _toggleListening(field, controller),
+    );
+  }
+
+  Widget _photoPreview(BuildContext context) {
+    final theme = Theme.of(context);
+    final placeholder = Container(
+      height: 110,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_photo_alternate_outlined,
+              size: 28, color: theme.colorScheme.primary),
+          const SizedBox(height: 6),
+          Text('아직 등록된 사진이 없어요', style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+
+    final pickedPath = _pickedPhoto?.path ?? widget.existing?.referencePhotoPath;
+    if (pickedPath == null) return placeholder;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Image.file(
+        File(pickedPath),
+        height: 150,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        // A stale path (photo file cleaned up outside this sheet) falls
+        // back to the empty-photo card instead of a render error.
+        errorBuilder: (_, _, _) => placeholder,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
-    final existingPhotoPath = widget.existing?.referencePhotoPath;
+    final theme = Theme.of(context);
 
     return Padding(
+      // Top padding is small because the modal sheet now shows a drag
+      // handle above this content.
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        left: 20,
+        right: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // The submit button lives up here, next to the title, so it's
-          // always in easy reach — previously it sat below every field and
-          // ended up pushed near the bottom of the screen (or behind the
-          // keyboard) once the form grew.
+          // always in easy reach — below every field it ends up pushed near
+          // the bottom of the screen (or behind the keyboard).
           Row(
             children: [
               Expanded(
                 child: Text(isEdit ? '약 정보 수정' : '약 추가',
-                    style: Theme.of(context).textTheme.titleMedium),
+                    style: theme.textTheme.titleMedium),
               ),
               FilledButton(
                 onPressed: _submit,
@@ -175,9 +233,7 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          const Text('* 필수 입력 항목', style: TextStyle(color: Colors.redAccent, fontSize: 11)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Flexible(
             child: SingleChildScrollView(
               child: Column(
@@ -187,32 +243,27 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                     controller: _nameController,
                     autofocus: !isEdit,
                     decoration: InputDecoration(
-                      label: const Text.rich(
+                      label: Text.rich(
                         TextSpan(
                           text: '약 이름',
                           children: [
-                            TextSpan(text: ' *', style: TextStyle(color: Colors.redAccent)),
+                            TextSpan(
+                              text: ' *',
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
                           ],
                         ),
                       ),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        tooltip: _listeningField == 'name' ? '녹음 중지' : '음성으로 입력',
-                        icon: Icon(
-                          _listeningField == 'name' ? Icons.mic : Icons.mic_none,
-                          color: _listeningField == 'name' ? Colors.redAccent : null,
-                        ),
-                        onPressed: () => _toggleListening('name', _nameController),
-                      ),
+                      suffixIcon: _micButton('name', _nameController),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('복용 시간대 (선택 안 하면 하루 1번 체크)',
-                        style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.schedule_outlined,
+                    label: '복용 시간대',
+                    hint: '선택 안 하면 하루 1번 체크',
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     children: TimeSlot.values.map((slot) {
@@ -230,13 +281,13 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('알람 (시간대별로 설정, 안 하면 알람 없음)',
-                        style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.notifications_none_rounded,
+                    label: '알람',
+                    hint: '시간대별 설정, 안 하면 알람 없음',
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   for (final slotKey in _activeSlotKeys())
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
@@ -263,13 +314,15 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                         ],
                       ),
                     ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('알림 방식', style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 12),
+                  const _SectionLabel(
+                    icon: Icons.volume_up_outlined,
+                    label: '알림 방식',
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 6,
                     children: AlarmStyle.values.map((style) {
                       final selected = _alarmStyle == style;
                       return ChoiceChip(
@@ -279,13 +332,13 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('식전 / 식후 (선택 안 하면 상관없음)',
-                        style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.restaurant_outlined,
+                    label: '식전 / 식후',
+                    hint: '선택 안 하면 상관없음',
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     children: MealTiming.values.map((timing) {
@@ -299,13 +352,13 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('약 받은 날 (선택 안 해도 됨)',
-                        style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.event_available_outlined,
+                    label: '약 받은 날',
+                    hint: '선택 안 해도 돼요',
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -325,26 +378,21 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (_pickedPhoto != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.file(File(_pickedPhoto!.path),
-                          height: 140, fit: BoxFit.cover),
-                    )
-                  else if (existingPhotoPath != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.file(File(existingPhotoPath),
-                          height: 140, fit: BoxFit.cover),
-                    ),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.photo_camera_outlined,
+                    label: '약 사진',
+                    hint: '인증사진 비교의 기준이 돼요',
+                  ),
+                  const SizedBox(height: 8),
+                  _photoPreview(context),
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () => _pick(ImageSource.camera),
-                          icon: const Icon(Icons.camera_alt),
+                          icon: const Icon(Icons.camera_alt_outlined, size: 18),
                           label: const Text('촬영'),
                         ),
                       ),
@@ -352,34 +400,27 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () => _pick(ImageSource.gallery),
-                          icon: const Icon(Icons.photo_library),
+                          icon: const Icon(Icons.photo_library_outlined, size: 18),
                           label: const Text('갤러리'),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('메모 (마이크로 말하면 텍스트로 변환됩니다)',
-                        style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.sticky_note_2_outlined,
+                    label: '메모',
+                    hint: '마이크를 누르면 음성으로 입력돼요',
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: _memoController,
                     maxLines: 3,
                     decoration: InputDecoration(
-                      hintText:
-                          _listeningField == 'memo' ? '듣고 있어요…' : '메모를 입력하거나 마이크를 눌러 말하세요',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        tooltip: _listeningField == 'memo' ? '녹음 중지' : '음성으로 입력',
-                        icon: Icon(
-                          _listeningField == 'memo' ? Icons.mic : Icons.mic_none,
-                          color: _listeningField == 'memo' ? Colors.redAccent : null,
-                        ),
-                        onPressed: () => _toggleListening('memo', _memoController),
-                      ),
+                      hintText: _listeningField == 'memo'
+                          ? '듣고 있어요…'
+                          : '메모를 입력하거나 마이크를 눌러 말하세요',
+                      suffixIcon: _micButton('memo', _memoController),
                     ),
                   ),
                 ],
@@ -388,6 +429,41 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Icon + title heading for each form section — the icon gives every block
+/// a quick visual anchor, the optional hint keeps helper text on one line
+/// with the label instead of floating loose.
+class _SectionLabel extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? hint;
+  const _SectionLabel({required this.icon, required this.label, this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: theme.colorScheme.primary),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: theme.textTheme.titleSmall?.copyWith(fontSize: 13.5),
+        ),
+        if (hint != null) ...[
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              hint!,
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

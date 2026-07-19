@@ -306,6 +306,11 @@ const Map<AppThemeName, _Palette> _dark = {
 /// color scheme (Astryx doesn't publish the full set of container/tertiary
 /// roles Material 3 needs), then the theme's actual background/surface/text
 /// tokens are laid on top so each theme keeps its real look.
+///
+/// Typography is Pretendard (bundled, see pubspec) with a weight-based
+/// hierarchy — 700 titles / 600 section titles / 400 body — rather than a
+/// second display family: mixing two Hangul families is rarely done in
+/// Korean app UI and would double the bundled font weight.
 ThemeData buildAppTheme(AppThemeName name, Brightness brightness) {
   final palette = (brightness == Brightness.light ? _light : _dark)[name]!;
 
@@ -313,6 +318,9 @@ ThemeData buildAppTheme(AppThemeName name, Brightness brightness) {
     seedColor: palette.accent,
     brightness: brightness,
   ).copyWith(
+    // Pin primary to the palette's exact accent (the seeded scheme shifts
+    // it toward Material's tonal ramp, washing out e.g. the coral theme).
+    primary: palette.accent,
     surface: palette.surface,
     onSurface: palette.textPrimary,
     onSurfaceVariant: palette.textSecondary,
@@ -320,46 +328,185 @@ ThemeData buildAppTheme(AppThemeName name, Brightness brightness) {
     outline: palette.border,
   );
 
+  final baseText = ThemeData(brightness: brightness).textTheme.apply(
+        fontFamily: 'Pretendard',
+        bodyColor: palette.textPrimary,
+        displayColor: palette.textPrimary,
+      );
+  final textTheme = baseText.copyWith(
+    titleLarge: baseText.titleLarge?.copyWith(
+        fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+    titleMedium: baseText.titleMedium?.copyWith(
+        fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+    titleSmall: baseText.titleSmall?.copyWith(
+        fontSize: 14, fontWeight: FontWeight.w600),
+    bodyLarge: baseText.bodyLarge?.copyWith(fontSize: 16, height: 1.45),
+    bodyMedium: baseText.bodyMedium?.copyWith(fontSize: 14.5, height: 1.45),
+    // Section labels/captions all over the app use bodySmall — giving it
+    // the secondary text color here upgrades them app-wide in one place.
+    bodySmall: baseText.bodySmall?.copyWith(
+        fontSize: 12.5, fontWeight: FontWeight.w500, color: palette.textSecondary),
+    labelLarge: baseText.labelLarge?.copyWith(
+        fontSize: 15, fontWeight: FontWeight.w600),
+  );
+
+  final buttonShape =
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+  // The palette's hairline border is too faint to outline a standalone
+  // button — mix in some secondary-text ink so outlined buttons read as
+  // buttons without shouting.
+  final outlinedSide =
+      BorderSide(color: palette.textSecondary.withValues(alpha: 0.35));
+
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
     colorScheme: scheme,
+    fontFamily: 'Pretendard',
     scaffoldBackgroundColor: palette.background,
     cardColor: palette.card,
     dividerColor: palette.border,
-    // A flat, bordered card and a touch of extra letter-spacing/whitespace
-    // reads as calmer and more traditional than Material's default heavy
-    // drop-shadow, tightly-packed look.
+    // A flat, bordered card and a touch of extra whitespace reads as calmer
+    // and more traditional than Material's default heavy drop-shadow,
+    // tightly-packed look.
     visualDensity: VisualDensity.comfortable,
+    textTheme: textTheme,
     appBarTheme: AppBarTheme(
       backgroundColor: palette.background,
       foregroundColor: palette.textPrimary,
       elevation: 0,
+      // Keeps the bar visually fused with the gradient backdrop instead of
+      // popping a surface tint once content scrolls under it.
+      scrolledUnderElevation: 0,
       centerTitle: true,
-      titleTextStyle: TextStyle(
-        color: palette.textPrimary,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.3,
-      ),
+      titleTextStyle: textTheme.titleMedium?.copyWith(fontSize: 19),
     ),
     cardTheme: CardThemeData(
       color: palette.card,
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: palette.border),
       ),
     ),
     dividerTheme: DividerThemeData(color: palette.border, thickness: 1, space: 1),
-    textTheme: ThemeData(brightness: brightness).textTheme.apply(
-      bodyColor: palette.textPrimary,
-      displayColor: palette.textPrimary,
-    ).copyWith(
-      titleLarge: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
-      titleMedium: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: buttonShape,
+        minimumSize: const Size(64, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        textStyle: textTheme.labelLarge,
+      ),
     ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        shape: buttonShape,
+        elevation: 0,
+        minimumSize: const Size(64, 46),
+        textStyle: textTheme.labelLarge,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: buttonShape,
+        minimumSize: const Size(64, 46),
+        foregroundColor: palette.textPrimary,
+        side: outlinedSide,
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        shape: buttonShape,
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      side: BorderSide(color: palette.border),
+      backgroundColor: palette.surface,
+      selectedColor: palette.accent.withValues(alpha: 0.14),
+      checkmarkColor: palette.accent,
+      labelStyle: textTheme.bodyMedium?.copyWith(
+          fontSize: 13.5, fontWeight: FontWeight.w500),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: palette.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: palette.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: palette.accent, width: 1.6),
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: palette.border),
+      ),
+      hintStyle: textTheme.bodyMedium?.copyWith(color: palette.textSecondary),
+      labelStyle: textTheme.bodyMedium?.copyWith(color: palette.textSecondary),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: palette.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titleTextStyle: textTheme.titleMedium,
+      contentTextStyle: textTheme.bodyMedium,
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: palette.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      dragHandleColor: palette.textSecondary.withValues(alpha: 0.4),
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: palette.accent,
+      foregroundColor: scheme.onPrimary,
+      elevation: 2,
+      highlightElevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      extendedTextStyle: textTheme.labelLarge,
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      backgroundColor: palette.textPrimary,
+      contentTextStyle:
+          textTheme.bodyMedium?.copyWith(color: palette.background),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: palette.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      textStyle: textTheme.bodyMedium,
+    ),
+    listTileTheme: ListTileThemeData(iconColor: palette.textSecondary),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: palette.accent,
+      linearTrackColor: palette.accent.withValues(alpha: 0.12),
+    ),
+  );
+}
+
+/// Subtle per-theme backdrop — a vertical wash from the theme's background
+/// into a faint accent tint. Derived programmatically so every theme (and
+/// both brightnesses) gets a matching backdrop without hand-tuning 22
+/// gradients. The top color equals the plain background, so the app bar
+/// (which uses that color) fuses seamlessly with it.
+LinearGradient appBackgroundGradient(AppThemeName name, Brightness brightness) {
+  final palette = (brightness == Brightness.light ? _light : _dark)[name]!;
+  return LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      palette.background,
+      Color.lerp(palette.background, palette.accent, 0.06)!,
+    ],
   );
 }
 
