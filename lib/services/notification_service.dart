@@ -89,6 +89,13 @@ class NotificationService {
             : RawResourceAndroidNotificationSound(spec.soundResource!),
         enableVibration: true,
         vibrationPattern: _vibrationPattern,
+        // The OS launcher badge count only reflects how many notifications
+        // are still sitting in the shade, which keeps growing if the user
+        // doesn't manually swipe each one away — it never syncs with
+        // whether a dose was actually taken. The in-app red dot (driven by
+        // real completion state) replaces it, so the OS badge is turned off
+        // entirely rather than left showing a number that never clears.
+        showBadge: false,
       ));
     }
 

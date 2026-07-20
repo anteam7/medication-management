@@ -274,13 +274,24 @@ class MedicationListScreen extends StatelessWidget {
     final state = context.watch<MedicationState>();
     final themeName = context.watch<AppThemeState>().current;
 
+    // Drives the in-app red dot below instead of relying on the OS launcher
+    // badge, which — unlike this — is recalculated fresh from state every
+    // build and can't get stuck showing a stale count.
+    final hasIncompleteToday =
+        state.items.isNotEmpty && !state.items.every(state.isFullyCompletedToday);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('복약 관리'),
         actions: [
           IconButton(
-            tooltip: '복약 달력',
-            icon: const Icon(Icons.calendar_month_outlined),
+            tooltip: hasIncompleteToday ? '복약 달력 (오늘 미완료 있음)' : '복약 달력',
+            icon: Badge(
+              isLabelVisible: hasIncompleteToday,
+              smallSize: 8,
+              backgroundColor: Colors.redAccent,
+              child: const Icon(Icons.calendar_month_outlined),
+            ),
             onPressed: () => Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (_) => const CalendarScreen())),
