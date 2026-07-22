@@ -46,7 +46,7 @@ class HabitStreakApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeName = context.watch<AppThemeState>().current;
     return MaterialApp(
-      title: '복약 관리',
+      title: '약콕',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(themeName, Brightness.light),
       // Pinned to light regardless of the device's system setting — the

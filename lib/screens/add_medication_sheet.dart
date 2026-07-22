@@ -30,6 +30,8 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
   final Set<TimeSlot> _selectedSlots = {};
   MealTiming? _selectedMealTiming;
   DateTime? _receivedDate;
+  DateTime? _courseStartDate;
+  DateTime? _courseEndDate;
   final Map<String, int> _alarmTimes = {};
   AlarmStyle _alarmStyle = AlarmStyle.gentleSound;
   late final TextEditingController _memoController =
@@ -46,6 +48,11 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
     if (existingSlots != null) _selectedSlots.addAll(existingSlots);
     _selectedMealTiming = widget.existing?.mealTiming;
     _receivedDate = widget.existing?.receivedDate;
+    // New medications default to starting today — a course with no
+    // explicit start date isn't a meaningful state, unlike the end date
+    // (which staying unset just means "chronic, no end").
+    _courseStartDate = widget.existing?.courseStartDate ?? DateTime.now();
+    _courseEndDate = widget.existing?.courseEndDate;
     final existingAlarms = widget.existing?.alarmTimes;
     if (existingAlarms != null) _alarmTimes.addAll(existingAlarms);
     _alarmStyle = widget.existing?.alarmStyle ?? AlarmStyle.gentleSound;
@@ -106,6 +113,37 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
     if (picked != null) setState(() => _receivedDate = picked);
   }
 
+  Future<void> _pickCourseStartDate() async {
+    final now = DateTime.now();
+    final picked = await showSimpleDatePicker(
+      context,
+      initialDate: _courseStartDate ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked == null) return;
+    setState(() {
+      _courseStartDate = picked;
+      // An end date earlier than the newly-picked start date would make the
+      // course invalid — clear it rather than silently keeping a nonsense
+      // range, the user can pick a new one.
+      if (_courseEndDate != null && _courseEndDate!.isBefore(picked)) {
+        _courseEndDate = null;
+      }
+    });
+  }
+
+  Future<void> _pickCourseEndDate() async {
+    final start = _courseStartDate ?? DateTime.now();
+    final picked = await showSimpleDatePicker(
+      context,
+      initialDate: _courseEndDate ?? start,
+      firstDate: start,
+      lastDate: DateTime(start.year + 2),
+    );
+    if (picked != null) setState(() => _courseEndDate = picked);
+  }
+
   @override
   void dispose() {
     if (SpeechService.instance.isListening) {
@@ -146,6 +184,8 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
         timeSlots: _selectedSlots,
         mealTiming: _selectedMealTiming,
         receivedDate: _receivedDate,
+        courseStartDate: _courseStartDate,
+        courseEndDate: _courseEndDate,
         alarmTimes: _alarmTimes,
         alarmStyle: _alarmStyle,
         memo: _memoController.text.trim().isEmpty ? null : _memoController.text.trim(),
@@ -351,6 +391,42 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                         }),
                       );
                     }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  const _SectionLabel(
+                    icon: Icons.event_repeat_outlined,
+                    label: '복용 기간',
+                    hint: '항생제처럼 기간이 정해진 약이면 종료일도 설정',
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickCourseStartDate,
+                          icon: const Icon(Icons.calendar_today, size: 16),
+                          label: Text(
+                            '시작 ${dateKey(_courseStartDate ?? DateTime.now())}',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickCourseEndDate,
+                          icon: const Icon(Icons.flag_outlined, size: 16),
+                          label: Text(
+                            _courseEndDate == null ? '종료일 없음' : dateKey(_courseEndDate!),
+                          ),
+                        ),
+                      ),
+                      if (_courseEndDate != null)
+                        IconButton(
+                          tooltip: '종료일 지우기',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() => _courseEndDate = null),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 18),
                   const _SectionLabel(

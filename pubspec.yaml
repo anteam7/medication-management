@@ -77,6 +77,7 @@ flutter:
   assets:
     - assets/models/
     - assets/fonts/OFL-LICENSE.txt
+    - assets/fonts/Jua-OFL-LICENSE.txt
 
   # Pretendard (https://github.com/orioncactus/pretendard, SIL OFL 1.1 —
   # license bundled at assets/fonts/OFL-LICENSE.txt): the de-facto standard
@@ -92,6 +93,12 @@ flutter:
           weight: 600
         - asset: assets/fonts/Pretendard-Bold.ttf
           weight: 700
+    # Jua (Google Fonts, SIL OFL 1.1 — license bundled at
+    # assets/fonts/Jua-OFL-LICENSE.txt): a rounded, playful Korean display
+    # face used only for the "약콕" app name, not body text.
+    - family: Jua
+      fonts:
+        - asset: assets/fonts/Jua-Regular.ttf
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

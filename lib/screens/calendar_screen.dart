@@ -288,6 +288,11 @@ class _DayDetailPanel extends StatelessWidget {
                           size: 18, color: Colors.green),
                       const SizedBox(width: 8),
                       Expanded(child: Text(item.name)),
+                      if (item.courseEndDate == null)
+                        Text(
+                          '시작일부터 총 ${totalTakenCountFor(item, asOf: day)}회',
+                          style: theme.textTheme.bodySmall,
+                        ),
                     ],
                   ),
                 ),
@@ -311,6 +316,11 @@ class _DayDetailPanel extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(child: Text(item.name)),
+                      if (item.courseEndDate == null)
+                        Text(
+                          '시작일부터 총 ${totalTakenCountFor(item, asOf: day)}회',
+                          style: theme.textTheme.bodySmall,
+                        ),
                     ],
                   ),
                 ),

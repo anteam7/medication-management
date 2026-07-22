@@ -46,6 +46,19 @@ class MedicationItem {
   /// [createdAt] or the adherence calendar.
   DateTime? receivedDate;
 
+  /// The day this medication's course begins — null for items created
+  /// before this feature existed, in which case adherence/streak
+  /// calculations fall back to [createdAt]. Distinct from [receivedDate]
+  /// (when the medication was picked up) — this is when the user actually
+  /// starts taking it.
+  DateTime? courseStartDate;
+
+  /// The day this medication's course is expected to end. Null means an
+  /// indefinite/chronic medication with no end date, in which case
+  /// achievement is measured as a rolling monthly rate instead of a
+  /// whole-course percentage.
+  DateTime? courseEndDate;
+
   /// Alarm time (minutes since midnight) per slot key ([TimeSlot.name] or
   /// [anySlotKey]) — a slot missing from this map simply has no alarm.
   Map<String, int> alarmTimes;
@@ -71,6 +84,8 @@ class MedicationItem {
     this.mealTiming,
     DateTime? createdAt,
     this.receivedDate,
+    this.courseStartDate,
+    this.courseEndDate,
     Map<String, int>? alarmTimes,
     this.alarmStyle = AlarmStyle.gentleSound,
     this.memo,
@@ -88,6 +103,8 @@ class MedicationItem {
         'mealTiming': mealTiming?.name,
         'createdAt': createdAt.toIso8601String(),
         'receivedDate': receivedDate?.toIso8601String(),
+        'courseStartDate': courseStartDate?.toIso8601String(),
+        'courseEndDate': courseEndDate?.toIso8601String(),
         'alarmTimes': alarmTimes,
         'alarmStyle': alarmStyle.name,
         'memo': memo,
@@ -146,6 +163,8 @@ class MedicationItem {
         : MealTiming.values.firstWhere((m) => m.name == rawMealTiming, orElse: () => MealTiming.beforeMeal);
 
     final rawReceivedDate = json['receivedDate'] as String?;
+    final rawCourseStartDate = json['courseStartDate'] as String?;
+    final rawCourseEndDate = json['courseEndDate'] as String?;
 
     final rawAlarmTimes = (json['alarmTimes'] as Map<String, dynamic>?) ?? {};
     final alarmTimes = rawAlarmTimes.map((k, v) => MapEntry(k, v as int));
@@ -164,6 +183,8 @@ class MedicationItem {
       mealTiming: mealTiming,
       createdAt: createdAt,
       receivedDate: rawReceivedDate == null ? null : DateTime.parse(rawReceivedDate),
+      courseStartDate: rawCourseStartDate == null ? null : DateTime.parse(rawCourseStartDate),
+      courseEndDate: rawCourseEndDate == null ? null : DateTime.parse(rawCourseEndDate),
       alarmTimes: alarmTimes,
       alarmStyle: alarmStyle,
       memo: json['memo'] as String?,

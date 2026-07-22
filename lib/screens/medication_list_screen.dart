@@ -11,10 +11,12 @@ import '../models/meal_timing.dart';
 import '../models/medication_item.dart';
 import '../models/medication_state.dart';
 import '../models/time_slot.dart';
+import '../services/adherence.dart';
 import '../services/notification_service.dart';
 import '../utils/date_key.dart';
 import '../widgets/simple_time_picker.dart';
 import '../widgets/theme_picker_sheet.dart';
+import 'achievement_screen.dart';
 import 'add_medication_sheet.dart';
 import 'calendar_screen.dart';
 import 'photo_match_screen.dart';
@@ -25,6 +27,8 @@ typedef _AddResult = ({
   Set<TimeSlot> timeSlots,
   MealTiming? mealTiming,
   DateTime? receivedDate,
+  DateTime? courseStartDate,
+  DateTime? courseEndDate,
   Map<String, int> alarmTimes,
   AlarmStyle alarmStyle,
   String? memo,
@@ -65,6 +69,8 @@ class MedicationListScreen extends StatelessWidget {
         timeSlots: result.timeSlots,
         mealTiming: result.mealTiming,
         receivedDate: result.receivedDate,
+        courseStartDate: result.courseStartDate,
+        courseEndDate: result.courseEndDate,
         alarmTimes: result.alarmTimes,
         alarmStyle: result.alarmStyle,
         memo: result.memo,
@@ -77,6 +83,8 @@ class MedicationListScreen extends StatelessWidget {
         newTimeSlots: result.timeSlots,
         newMealTiming: result.mealTiming,
         newReceivedDate: result.receivedDate,
+        newCourseStartDate: result.courseStartDate,
+        newCourseEndDate: result.courseEndDate,
         newAlarmTimes: result.alarmTimes,
         newAlarmStyle: result.alarmStyle,
         newMemo: result.memo,
@@ -282,8 +290,19 @@ class MedicationListScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('복약 관리'),
+        centerTitle: false,
+        title: const Text(
+          '약콕',
+          style: TextStyle(fontFamily: 'Jua', fontSize: 24),
+        ),
         actions: [
+          IconButton(
+            tooltip: '기간별 복약 성취',
+            icon: const Icon(Icons.emoji_events_outlined),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const AchievementScreen())),
+          ),
           IconButton(
             tooltip: hasIncompleteToday ? '복약 달력 (오늘 미완료 있음)' : '복약 달력',
             icon: Badge(
@@ -342,6 +361,8 @@ class MedicationListScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                 children: [
                   _TodayHeroCard(state: state),
+                  const SizedBox(height: 16),
+                  _AchievementSummaryStrip(items: state.items),
                   for (final slot in [
                     TimeSlot.morning,
                     TimeSlot.lunch,
@@ -562,6 +583,173 @@ class _TodayHeroCard extends StatelessWidget {
   }
 }
 
+/// A compact, always-on-screen row of per-medication course progress —
+/// achievement shouldn't be hidden behind the trophy icon, it should be one
+/// of the first things visible when the app opens. Tapping the header or
+/// any card opens [AchievementScreen] for the full detail view.
+///
+/// Only medications with a defined course period (a [MedicationItem.
+/// courseEndDate]) appear here — a period-based percentage only means
+/// something when there's a "whole" to measure against. Indefinite/chronic
+/// medications are represented in the today hero card above instead.
+class _AchievementSummaryStrip extends StatelessWidget {
+  final List<MedicationItem> items;
+  const _AchievementSummaryStrip({required this.items});
+
+  void _openFull(BuildContext context) => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AchievementScreen()),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final courseItems = items.where((i) => i.courseEndDate != null).toList();
+    if (courseItems.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _openFull(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Icon(Icons.emoji_events_outlined,
+                      size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: 6),
+                  Text('기간별 복약 성취', style: theme.textTheme.titleSmall),
+                  const Spacer(),
+                  Text('전체보기', style: theme.textTheme.bodySmall),
+                  Icon(Icons.chevron_right,
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 92,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              itemCount: courseItems.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) =>
+                  _AchievementMiniCard(item: courseItems[index], onTap: () => _openFull(context)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One medication's course status shrunk to card-sized: a slide bar with
+/// its percentage, D-day/완주 badge, and current streak — the same facts as
+/// [AchievementScreen]'s full card, just dense enough to fit several in a
+/// horizontal strip. Only ever built for medications with a defined course
+/// period (see [_AchievementSummaryStrip]).
+class _AchievementMiniCard extends StatelessWidget {
+  final MedicationItem item;
+  final VoidCallback onTap;
+  const _AchievementMiniCard({required this.item, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final rate = adherenceRateFor(item);
+    final streak = currentStreakFor(item);
+    final completed = isCourseCompleted(item);
+
+    final String badgeText;
+    if (completed) {
+      badgeText = '완주';
+    } else {
+      final remaining = daysBetween(dateOnly(DateTime.now()), dateOnly(item.courseEndDate!));
+      badgeText = remaining >= 0 ? 'D-$remaining' : 'D+${-remaining}';
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        width: 116,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: completed ? scheme.primary : Theme.of(context).dividerColor,
+            width: completed ? 1.6 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              badgeText,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: completed ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: completed ? 1 : (rate ?? 0),
+                      minHeight: 6,
+                      color: scheme.primary,
+                      backgroundColor: scheme.primary.withValues(alpha: 0.15),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  completed ? '완료' : (rate == null ? '-' : '${(rate * 100).round()}%'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.local_fire_department_outlined, size: 11, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 2),
+                Text(
+                  '$streak일',
+                  style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
   const _EmptyState({required this.onAdd});
@@ -763,6 +951,13 @@ class _MedicationTile extends StatelessWidget {
               _MetaChip(
                 icon: Icons.event_available_outlined,
                 label: '받은날 ${dateKey(item.receivedDate!)}',
+              ),
+            // No defined course end date means no "whole" to show a
+            // percentage against — a running lifetime count instead.
+            if (item.courseEndDate == null)
+              _MetaChip(
+                icon: Icons.checklist_rtl_outlined,
+                label: '시작일부터 총 ${totalTakenCountFor(item)}회 복용',
               ),
             if (item.memo != null && item.memo!.trim().isNotEmpty)
               InkWell(

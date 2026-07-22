@@ -50,6 +50,8 @@ class MedicationState extends ChangeNotifier {
     Set<TimeSlot> timeSlots = const {},
     MealTiming? mealTiming,
     DateTime? receivedDate,
+    DateTime? courseStartDate,
+    DateTime? courseEndDate,
     Map<String, int> alarmTimes = const {},
     AlarmStyle alarmStyle = AlarmStyle.gentleSound,
     String? memo,
@@ -70,6 +72,8 @@ class MedicationState extends ChangeNotifier {
       timeSlots: timeSlots,
       mealTiming: mealTiming,
       receivedDate: receivedDate,
+      courseStartDate: courseStartDate,
+      courseEndDate: courseEndDate,
       alarmTimes: alarmTimes,
       alarmStyle: alarmStyle,
       memo: memo,
@@ -87,6 +91,8 @@ class MedicationState extends ChangeNotifier {
     Set<TimeSlot>? newTimeSlots,
     MealTiming? newMealTiming,
     DateTime? newReceivedDate,
+    DateTime? newCourseStartDate,
+    DateTime? newCourseEndDate,
     Map<String, int> newAlarmTimes = const {},
     AlarmStyle newAlarmStyle = AlarmStyle.gentleSound,
     String? newMemo,
@@ -106,6 +112,8 @@ class MedicationState extends ChangeNotifier {
     }
     item.mealTiming = newMealTiming;
     item.receivedDate = newReceivedDate;
+    item.courseStartDate = newCourseStartDate;
+    item.courseEndDate = newCourseEndDate;
     item.alarmTimes = newAlarmTimes;
     item.alarmStyle = newAlarmStyle;
     item.memo = newMemo;
