@@ -75,27 +75,53 @@ bool _isFullyCompletedOn(MedicationItem item, DateTime day) {
   return slots.every((slotKey) => dayCompletions.containsKey(slotKey));
 }
 
-/// [item]'s taken/expected ratio across its course — from [MedicationItem.
-/// courseStartDate] (falling back to [MedicationItem.createdAt] when unset)
-/// up to its [MedicationItem.courseEndDate] or today, whichever is earlier.
-/// Returns null when not a single day of the course has elapsed yet, so
-/// callers can show "아직 데이터 없음" instead of a misleading 0%.
-double? adherenceRateFor(MedicationItem item, {DateTime? asOf}) {
-  final today = dateOnly(asOf ?? DateTime.now());
+/// [item]'s taken/expected ratio across the *whole* course — from
+/// [MedicationItem.courseStartDate] (falling back to [MedicationItem.
+/// createdAt] when unset) through its [MedicationItem.courseEndDate].
+/// Days not reached yet count toward the denominator as not-yet-taken,
+/// not as skipped — so a 30-day course sits around 10% on day 3 even if
+/// every dose so far was taken, only reaching 100% once the entire course
+/// is both finished and fully adhered to. (Clamping the denominator to
+/// "days so far" instead was the earlier bug: a course that was on track
+/// always read as 100% from day one, since there was nothing yet to have
+/// missed.) Returns null when [item] has no course end date, or its end
+/// date is before its start date.
+double? adherenceRateFor(MedicationItem item) {
+  final end = item.courseEndDate;
+  if (end == null) return null;
   final start = dateOnly(item.courseStartDate ?? item.createdAt);
-  final rawEnd = dateOnly(item.courseEndDate ?? today);
-  final end = rawEnd.isAfter(today) ? today : rawEnd;
-  if (end.isBefore(start)) return null;
+  final courseEnd = dateOnly(end);
+  if (courseEnd.isBefore(start)) return null;
 
   final slots = item.timeSlots.isEmpty ? const [anySlotKey] : item.timeSlots.map((s) => s.name);
   int taken = 0;
   int total = 0;
-  for (var d = start; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
+  for (var d = start; !d.isAfter(courseEnd); d = d.add(const Duration(days: 1))) {
     final dayCompletions = item.completions[dateKey(d)] ?? const {};
     for (final slotKey in slots) {
       total++;
       if (dayCompletions.containsKey(slotKey)) taken++;
     }
+  }
+  if (total == 0) return null;
+  return taken / total;
+}
+
+/// [item]'s today-only taken/expected ratio (e.g. 2 of 3 doses so far today
+/// → 0.67) — shown alongside the whole-course rate so "today" and "the
+/// whole course" don't get blurred into one number. Returns null if the
+/// medication didn't exist yet as of [asOf] or has no slots.
+double? todayExecutionRateFor(MedicationItem item, {DateTime? asOf}) {
+  final today = dateOnly(asOf ?? DateTime.now());
+  if (dateOnly(item.createdAt).isAfter(today)) return null;
+
+  final slots = item.timeSlots.isEmpty ? const [anySlotKey] : item.timeSlots.map((s) => s.name);
+  final dayCompletions = item.completions[dateKey(today)] ?? const {};
+  int taken = 0;
+  int total = 0;
+  for (final slotKey in slots) {
+    total++;
+    if (dayCompletions.containsKey(slotKey)) taken++;
   }
   if (total == 0) return null;
   return taken / total;

@@ -26,35 +26,41 @@ class NotificationService {
         anySlotKey,
       ];
 
-  /// Android notification channels: sound/vibration are fixed the first
-  /// time a channel is created, so each [AlarmStyle] needs its own channel
-  /// rather than varying those fields per-notification.
+  /// Android notification channels: sound/vibration/importance/audio-usage
+  /// are all fixed the first time a channel is created, so each [AlarmStyle]
+  /// needs its own channel rather than varying those fields per-notification.
+  ///
+  /// Channel IDs carry a `_v2` suffix so devices that already had the old
+  /// (`_v1`-shaped, no suffix) channels get fresh ones with the corrected
+  /// settings below on the next app update, instead of silently keeping
+  /// whatever was baked in on first install — bump this suffix again if
+  /// these settings ever need to change further.
   static const _channels = {
     AlarmStyle.vibration: _ChannelSpec(
-      id: 'medication_alarm_vibration',
+      id: 'medication_alarm_vibration_v2',
       name: '복약 알람 (진동)',
       description: '진동으로 복약 시간을 알려줍니다',
     ),
     AlarmStyle.gentleSound: _ChannelSpec(
-      id: 'medication_alarm_gentle',
+      id: 'medication_alarm_gentle_v2',
       name: '복약 알람 (잔잔한 소리)',
       description: '잔잔한 소리와 진동으로 복약 시간을 알려줍니다',
       soundResource: 'gentle_alarm',
     ),
     AlarmStyle.bell: _ChannelSpec(
-      id: 'medication_alarm_bell',
+      id: 'medication_alarm_bell_v2',
       name: '복약 알람 (벨 소리)',
       description: '벨 소리와 진동으로 복약 시간을 알려줍니다',
       soundResource: 'bell_alarm',
     ),
     AlarmStyle.upbeat: _ChannelSpec(
-      id: 'medication_alarm_upbeat',
+      id: 'medication_alarm_upbeat_v2',
       name: '복약 알람 (경쾌한 소리)',
       description: '경쾌한 소리와 진동으로 복약 시간을 알려줍니다',
       soundResource: 'upbeat_alarm',
     ),
     AlarmStyle.alert: _ChannelSpec(
-      id: 'medication_alarm_alert',
+      id: 'medication_alarm_alert_v2',
       name: '복약 알람 (또렷한 알림음)',
       description: '또렷한 알림음과 진동으로 복약 시간을 알려줍니다',
       soundResource: 'alert_alarm',
@@ -82,7 +88,15 @@ class NotificationService {
         spec.id,
         spec.name,
         description: spec.description,
-        importance: Importance.high,
+        // Importance.max (not just .high) and an "alarm" audio usage make
+        // this behave like a real alarm rather than a generic notification
+        // on more OEM skins — e.g. it's more likely to actually play
+        // through the alarm volume stream and less likely to be silently
+        // downgraded by a manufacturer's own notification-management layer,
+        // which is where a lot of the "doesn't ring on this phone" reports
+        // for Android apps come from.
+        importance: Importance.max,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
         playSound: spec.soundResource != null,
         sound: spec.soundResource == null
             ? null
@@ -182,8 +196,10 @@ class NotificationService {
           spec.id,
           spec.name,
           channelDescription: spec.description,
-          importance: Importance.high,
-          priority: Priority.high,
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
         ),
         iOS: const DarwinNotificationDetails(),
       ),
@@ -208,8 +224,10 @@ class NotificationService {
           spec.id,
           spec.name,
           channelDescription: spec.description,
-          importance: Importance.high,
-          priority: Priority.high,
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
           playSound: true,
           sound: RawResourceAndroidNotificationSound(spec.soundResource!),
           enableVibration: true,
@@ -254,8 +272,10 @@ class NotificationService {
       spec.id,
       spec.name,
       channelDescription: spec.description,
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.max,
+      priority: Priority.max,
+      category: AndroidNotificationCategory.alarm,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
       playSound: spec.soundResource != null,
       sound: spec.soundResource == null
           ? null

@@ -120,7 +120,16 @@ class _CourseCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(subtitle, style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 12),
-          _CourseSlideBar(rate: rate, completed: completed),
+          Text('전체 코스', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          _CourseSlideBar(rate: rate),
+          const SizedBox(height: 10),
+          // Today is shown separately from the whole-course rate above —
+          // it's a different question ("did I take it today" vs. "how's
+          // the whole course going").
+          Text('오늘의 성취도', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          _CourseSlideBar(rate: todayExecutionRateFor(item)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -147,19 +156,17 @@ class _CourseCard extends StatelessWidget {
 }
 
 /// A linear "slide" progress bar with its percentage alongside — used for
-/// medications with a defined course period, where achievement means "how
-/// much of the whole course is done", a fraction that reads more naturally
-/// as a bar filling up than a ring.
+/// both the whole-course rate and today's rate, so the two read as the same
+/// visual language despite answering different questions.
 class _CourseSlideBar extends StatelessWidget {
   final double? rate;
-  final bool completed;
-  const _CourseSlideBar({required this.rate, required this.completed});
+  const _CourseSlideBar({required this.rate});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final rate = this.rate;
-    final value = completed ? 1.0 : (rate ?? 0);
+    final value = rate ?? 0;
     return Row(
       children: [
         Expanded(
@@ -177,7 +184,7 @@ class _CourseSlideBar extends StatelessWidget {
         SizedBox(
           width: 42,
           child: Text(
-            completed ? '완료' : (rate == null ? '-' : '${(rate * 100).round()}%'),
+            rate == null ? '-' : '${(rate * 100).round()}%',
             textAlign: TextAlign.right,
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: scheme.onSurface),
           ),

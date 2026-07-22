@@ -632,7 +632,7 @@ class _AchievementSummaryStrip extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 92,
+            height: 150,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
@@ -648,11 +648,11 @@ class _AchievementSummaryStrip extends StatelessWidget {
   }
 }
 
-/// One medication's course status shrunk to card-sized: a slide bar with
-/// its percentage, D-day/완주 badge, and current streak — the same facts as
-/// [AchievementScreen]'s full card, just dense enough to fit several in a
-/// horizontal strip. Only ever built for medications with a defined course
-/// period (see [_AchievementSummaryStrip]).
+/// One medication's course status shrunk to card-sized: whole-course and
+/// today slide bars with their percentages, D-day/완주 badge, and current
+/// streak — the same facts as [AchievementScreen]'s full card, just dense
+/// enough to fit several in a horizontal strip. Only ever built for
+/// medications with a defined course period (see [_AchievementSummaryStrip]).
 class _AchievementMiniCard extends StatelessWidget {
   final MedicationItem item;
   final VoidCallback onTap;
@@ -707,32 +707,18 @@ class _AchievementMiniCard extends StatelessWidget {
                 color: completed ? scheme.primary : scheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: 8),
+            Text('전체 코스', style: TextStyle(fontSize: 9.5, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 2),
+            // Driven by the real rate, not by whether the course's date
+            // range has ended — that says nothing about whether every dose
+            // in it was actually taken.
+            _MiniBarRow(rate: rate),
             const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      value: completed ? 1 : (rate ?? 0),
-                      minHeight: 6,
-                      color: scheme.primary,
-                      backgroundColor: scheme.primary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  completed ? '완료' : (rate == null ? '-' : '${(rate * 100).round()}%'),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
+            Text('오늘', style: TextStyle(fontSize: 9.5, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 2),
+            _MiniBarRow(rate: todayExecutionRateFor(item)),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Icon(Icons.local_fire_department_outlined, size: 11, color: scheme.onSurfaceVariant),
@@ -746,6 +732,48 @@ class _AchievementMiniCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A compact slide bar + percentage — used for both the mini card's
+/// whole-course and today rates so they read as the same visual language.
+class _MiniBarRow extends StatelessWidget {
+  final double? rate;
+  const _MiniBarRow({required this.rate});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final rate = this.rate;
+    return Row(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: rate ?? 0,
+              minHeight: 6,
+              color: scheme.primary,
+              backgroundColor: scheme.primary.withValues(alpha: 0.15),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        // Fixed width regardless of the text's own length ("45%" vs
+        // "100%") — otherwise the bar next to a wider value like 100%
+        // silently gets less room than one next to a narrower value,
+        // making two bars meant to read as the same scale look different
+        // sizes.
+        SizedBox(
+          width: 30,
+          child: Text(
+            rate == null ? '-' : '${(rate * 100).round()}%',
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: scheme.onSurface),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -144,6 +144,40 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
     if (picked != null) setState(() => _courseEndDate = picked);
   }
 
+  /// Lets the user type an exact day count instead of only picking from the
+  /// preset chips — for a course length that doesn't match any of them
+  /// (e.g. 6일, 21일).
+  Future<void> _pickCustomDuration() async {
+    final controller = TextEditingController();
+    final days = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('복용 기간 직접 입력'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '총 며칠',
+            suffixText: '일',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, int.tryParse(value)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, int.tryParse(controller.text)),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+    if (days == null || days < 1 || !mounted) return;
+    final start = _courseStartDate ?? DateTime.now();
+    setState(() => _courseEndDate = start.add(Duration(days: days - 1)));
+  }
+
   @override
   void dispose() {
     if (SpeechService.instance.isListening) {
@@ -426,6 +460,32 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                           icon: const Icon(Icons.close),
                           onPressed: () => setState(() => _courseEndDate = null),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Quick durations for short courses (항생제 등) — picking one
+                  // sets the end date directly instead of navigating the
+                  // calendar to a day that's often less than a month out.
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ...[3, 5, 7, 10, 14, 30].map((days) {
+                        final start = _courseStartDate ?? DateTime.now();
+                        final end = start.add(Duration(days: days - 1));
+                        final selected =
+                            _courseEndDate != null && dateKey(_courseEndDate!) == dateKey(end);
+                        return ChoiceChip(
+                          label: Text('$days일'),
+                          selected: selected,
+                          onSelected: (_) => setState(() => _courseEndDate = end),
+                        );
+                      }),
+                      ActionChip(
+                        avatar: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('직접 입력'),
+                        onPressed: _pickCustomDuration,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 18),
