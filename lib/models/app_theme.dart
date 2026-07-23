@@ -333,21 +333,27 @@ ThemeData buildAppTheme(AppThemeName name, Brightness brightness) {
         bodyColor: palette.textPrimary,
         displayColor: palette.textPrimary,
       );
+  // Sized up and weighted heavier across the board from the previous pass
+  // (titleLarge 22→26, bodyMedium 14.5→16.5 etc., body text 400→600) for
+  // stronger legibility — this is a medication app, where being easy to
+  // read at a glance matters more than a light, airy look.
   final textTheme = baseText.copyWith(
     titleLarge: baseText.titleLarge?.copyWith(
-        fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+        fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.3),
     titleMedium: baseText.titleMedium?.copyWith(
-        fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+        fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.2),
     titleSmall: baseText.titleSmall?.copyWith(
-        fontSize: 14, fontWeight: FontWeight.w600),
-    bodyLarge: baseText.bodyLarge?.copyWith(fontSize: 16, height: 1.45),
-    bodyMedium: baseText.bodyMedium?.copyWith(fontSize: 14.5, height: 1.45),
+        fontSize: 16, fontWeight: FontWeight.w700),
+    bodyLarge: baseText.bodyLarge?.copyWith(
+        fontSize: 18, fontWeight: FontWeight.w600, height: 1.45),
+    bodyMedium: baseText.bodyMedium?.copyWith(
+        fontSize: 16.5, fontWeight: FontWeight.w600, height: 1.45),
     // Section labels/captions all over the app use bodySmall — giving it
     // the secondary text color here upgrades them app-wide in one place.
     bodySmall: baseText.bodySmall?.copyWith(
-        fontSize: 12.5, fontWeight: FontWeight.w500, color: palette.textSecondary),
+        fontSize: 14, fontWeight: FontWeight.w600, color: palette.textSecondary),
     labelLarge: baseText.labelLarge?.copyWith(
-        fontSize: 15, fontWeight: FontWeight.w600),
+        fontSize: 17, fontWeight: FontWeight.w700),
   );
 
   final buttonShape =
@@ -379,7 +385,7 @@ ThemeData buildAppTheme(AppThemeName name, Brightness brightness) {
       // popping a surface tint once content scrolls under it.
       scrolledUnderElevation: 0,
       centerTitle: true,
-      titleTextStyle: textTheme.titleMedium?.copyWith(fontSize: 19),
+      titleTextStyle: textTheme.titleMedium?.copyWith(fontSize: 22),
     ),
     cardTheme: CardThemeData(
       color: palette.card,

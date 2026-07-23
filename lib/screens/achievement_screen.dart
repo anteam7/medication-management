@@ -5,22 +5,24 @@ import '../models/app_theme.dart';
 import '../models/app_theme_state.dart';
 import '../models/medication_item.dart';
 import '../models/medication_state.dart';
+import '../models/time_slot.dart';
 import '../services/adherence.dart';
-import '../utils/date_key.dart';
 
-/// Per-medication course progress: how far into its start~end date range it
-/// is, its running adherence rate, current streak, and — once the course's
-/// end date has passed — a completion badge. Only medications with a
-/// defined course period ([MedicationItem.courseEndDate]) appear here — a
-/// period-based percentage only means something when there's a "whole" to
-/// measure against. Indefinite/chronic medications show up in the main
-/// screen's today hero card instead, not here.
+/// "기간별 복약 성취" leads with a single aggregate — "오늘 먹어야 할 전체 약의
+/// 상황" (today's combined status across every course-bound medication) and
+/// "전체 기간 중에 진행된 사항" (combined progress across their whole course
+/// periods) — followed by a simple daily check per medication below, since
+/// the aggregate alone gives no way to actually mark today's doses from this
+/// screen. That per-medication check is purely a "today" check — it's keyed
+/// off the same daily completion record as the rest of the app, so it
+/// resets on its own the moment a new day starts, same as everywhere else.
 class AchievementScreen extends StatelessWidget {
   const AchievementScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final allItems = context.watch<MedicationState>().items;
+    final state = context.watch<MedicationState>();
+    final allItems = state.items;
     final items = allItems.where((i) => i.courseEndDate != null).toList();
     final themeName = context.watch<AppThemeState>().current;
     final theme = Theme.of(context);
@@ -38,129 +40,58 @@ class AchievementScreen extends StatelessWidget {
                   style: theme.textTheme.bodyMedium,
                 ),
               )
-            : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) => _CourseCard(item: items[index]),
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _AggregateRateCard(items: items),
+                  const SizedBox(height: 24),
+                  Text('오늘 체크', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  for (final item in items) _DailyCheckRow(item: item),
+                ],
               ),
       ),
     );
   }
 }
 
-/// Only ever built for medications with a defined course period (see
-/// [AchievementScreen]), so achievement always reads as "how much of the
-/// whole course is done" — a full-width slide bar with its percentage.
-class _CourseCard extends StatelessWidget {
-  final MedicationItem item;
-  const _CourseCard({required this.item});
+/// The two aggregate bars, each spanning the full width.
+class _AggregateRateCard extends StatelessWidget {
+  final List<MedicationItem> items;
+  const _AggregateRateCard({required this.items});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final rate = adherenceRateFor(item);
-    final streak = currentStreakFor(item);
-    final completed = isCourseCompleted(item);
-
-    final String badgeText;
-    if (completed) {
-      badgeText = '완주 ${((rate ?? 1) * 100).round()}%';
-    } else {
-      final remaining = daysBetween(dateOnly(DateTime.now()), dateOnly(item.courseEndDate!));
-      badgeText = remaining >= 0 ? 'D-$remaining' : 'D+${-remaining}';
-    }
-
-    final String subtitle = completed
-        ? '${courseDayCount(item)}일 코스 완료'
-        : '${courseDayCount(item)}일 코스 · ${courseElapsedDay(item)}일차 진행 중';
-
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: completed ? scheme.primary : Theme.of(context).dividerColor,
-          width: completed ? 2 : 1,
-        ),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  item.name,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: completed
-                      ? scheme.primary.withValues(alpha: 0.14)
-                      : scheme.onSurfaceVariant.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  badgeText,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: completed ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(subtitle, style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          Text('전체 코스', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 4),
-          _CourseSlideBar(rate: rate),
-          const SizedBox(height: 10),
-          // Today is shown separately from the whole-course rate above —
-          // it's a different question ("did I take it today" vs. "how's
-          // the whole course going").
-          Text('오늘의 성취도', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 4),
-          _CourseSlideBar(rate: todayExecutionRateFor(item)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Icon(
-                completed ? Icons.emoji_events_outlined : Icons.local_fire_department_outlined,
-                size: 15,
-                color: scheme.primary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                completed ? '완주 뱃지 획득' : '$streak일 연속 복용',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: completed ? scheme.primary : scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+          _RateBlockBar(label: '전체 기간', rate: aggregateCourseRateFor(items)),
+          const SizedBox(height: 16),
+          _RateBlockBar(label: '오늘', rate: aggregateTodayRateFor(items)),
         ],
       ),
     );
   }
 }
 
-/// A linear "slide" progress bar with its percentage alongside — used for
-/// both the whole-course rate and today's rate, so the two read as the same
-/// visual language despite answering different questions.
-class _CourseSlideBar extends StatelessWidget {
+/// A progress bar on the left with its label + percentage grouped into a
+/// same-size block on the right, so "오늘" and "전체 기간" line up identically
+/// regardless of value.
+class _RateBlockBar extends StatelessWidget {
+  final String label;
   final double? rate;
-  const _CourseSlideBar({required this.rate});
+  const _RateBlockBar({required this.label, required this.rate});
+
+  // Sized for the longest realistic single line ("전체 기간 100%") at these
+  // font sizes.
+  static const _blockWidth = 128.0;
 
   @override
   Widget build(BuildContext context) {
@@ -174,22 +105,105 @@ class _CourseSlideBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: value,
-              minHeight: 10,
+              minHeight: 16,
               color: scheme.primary,
               backgroundColor: scheme.primary.withValues(alpha: 0.15),
             ),
           ),
         ),
         const SizedBox(width: 10),
-        SizedBox(
-          width: 42,
-          child: Text(
-            rate == null ? '-' : '${(rate * 100).round()}%',
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: scheme.onSurface),
+        Container(
+          width: _blockWidth,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                rate == null ? '-' : '${(rate * 100).round()}%',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One medication's simple today-only check — tapping marks/clears every
+/// slot it has for today at once. Read from and written to the exact same
+/// per-day completion record the rest of the app uses, so it's naturally in
+/// sync with the main list's own checks and resets the moment today's date
+/// key changes.
+class _DailyCheckRow extends StatelessWidget {
+  final MedicationItem item;
+  const _DailyCheckRow({required this.item});
+
+  List<TimeSlot?> get _slots =>
+      item.timeSlots.isEmpty ? const [null] : item.timeSlots.map((s) => s as TimeSlot?).toList();
+
+  Future<void> _toggle(BuildContext context, bool currentlyDone) async {
+    final state = context.read<MedicationState>();
+    for (final slot in _slots) {
+      if (currentlyDone) {
+        await state.uncompleteToday(item.id, slot: slot);
+      } else {
+        await state.completeToday(item.id, slot: slot);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<MedicationState>();
+    final done = state.isFullyCompletedToday(item);
+    final scheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _toggle(context, done),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            Icon(
+              done ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: done ? Colors.green : scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                item.name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  decoration: done ? TextDecoration.lineThrough : null,
+                  color: done ? scheme.onSurfaceVariant : scheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

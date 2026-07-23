@@ -7,6 +7,7 @@ import '../models/alarm_style.dart';
 import '../models/meal_timing.dart';
 import '../models/medication_item.dart';
 import '../models/time_slot.dart';
+import '../services/notification_service.dart';
 import '../services/speech_service.dart';
 import '../utils/date_key.dart';
 import '../widgets/simple_date_picker.dart';
@@ -395,14 +396,28 @@ class _AddMedicationSheetState extends State<AddMedicationSheet> {
                   ),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8,
+                    spacing: 4,
                     runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: AlarmStyle.values.map((style) {
                       final selected = _alarmStyle == style;
-                      return ChoiceChip(
-                        label: Text(style.label),
-                        selected: selected,
-                        onSelected: (_) => setState(() => _alarmStyle = style),
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ChoiceChip(
+                            label: Text(style.label),
+                            selected: selected,
+                            onSelected: (_) => setState(() => _alarmStyle = style),
+                          ),
+                          IconButton(
+                            tooltip: '미리듣기',
+                            icon: const Icon(Icons.volume_up_outlined, size: 18),
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.only(left: 2, right: 6),
+                            onPressed: () => NotificationService.instance.previewAlarmStyle(style),
+                          ),
+                        ],
                       );
                     }).toList(),
                   ),

@@ -127,6 +127,52 @@ double? todayExecutionRateFor(MedicationItem item, {DateTime? asOf}) {
   return taken / total;
 }
 
+/// Combined today taken/expected ratio across every course-bound medication
+/// in [items] — "오늘 먹어야 할 전체 약의 상황" as one number rather than
+/// broken out per medication. Returns null when nothing had a dose due
+/// today across all of [items].
+double? aggregateTodayRateFor(List<MedicationItem> items) {
+  final today = dateOnly(DateTime.now());
+  int taken = 0, total = 0;
+  for (final item in items) {
+    if (dateOnly(item.createdAt).isAfter(today)) continue;
+    final slots = item.timeSlots.isEmpty ? const [anySlotKey] : item.timeSlots.map((s) => s.name);
+    final dayCompletions = item.completions[dateKey(today)] ?? const {};
+    for (final slotKey in slots) {
+      total++;
+      if (dayCompletions.containsKey(slotKey)) taken++;
+    }
+  }
+  if (total == 0) return null;
+  return taken / total;
+}
+
+/// Combined whole-course taken/expected ratio across every course-bound
+/// medication in [items] — "전체 기간 중에 진행된 사항" as one number rather
+/// than broken out per medication. Follows the same "denominator is the
+/// whole course, not just days elapsed" rule as [adherenceRateFor].
+double? aggregateCourseRateFor(List<MedicationItem> items) {
+  int taken = 0, total = 0;
+  for (final item in items) {
+    final end = item.courseEndDate;
+    if (end == null) continue;
+    final start = dateOnly(item.courseStartDate ?? item.createdAt);
+    final courseEnd = dateOnly(end);
+    if (courseEnd.isBefore(start)) continue;
+
+    final slots = item.timeSlots.isEmpty ? const [anySlotKey] : item.timeSlots.map((s) => s.name);
+    for (var d = start; !d.isAfter(courseEnd); d = d.add(const Duration(days: 1))) {
+      final dayCompletions = item.completions[dateKey(d)] ?? const {};
+      for (final slotKey in slots) {
+        total++;
+        if (dayCompletions.containsKey(slotKey)) taken++;
+      }
+    }
+  }
+  if (total == 0) return null;
+  return taken / total;
+}
+
 /// Total number of individual dose completions recorded for [item] from its
 /// start date up to [asOf] (default today) — how many times it's actually
 /// been taken. Meant for medications with no defined end date, where a

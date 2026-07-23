@@ -293,7 +293,7 @@ class MedicationListScreen extends StatelessWidget {
         centerTitle: false,
         title: const Text(
           '약콕',
-          style: TextStyle(fontFamily: 'Jua', fontSize: 24),
+          style: TextStyle(fontFamily: 'Jua', fontSize: 28),
         ),
         actions: [
           IconButton(
@@ -583,15 +583,15 @@ class _TodayHeroCard extends StatelessWidget {
   }
 }
 
-/// A compact, always-on-screen row of per-medication course progress —
-/// achievement shouldn't be hidden behind the trophy icon, it should be one
-/// of the first things visible when the app opens. Tapping the header or
-/// any card opens [AchievementScreen] for the full detail view.
+/// A compact, always-on-screen aggregate — achievement shouldn't be hidden
+/// behind the trophy icon, it should be one of the first things visible when
+/// the app opens. Tapping opens [AchievementScreen] for the full view.
 ///
-/// Only medications with a defined course period (a [MedicationItem.
-/// courseEndDate]) appear here — a period-based percentage only means
-/// something when there's a "whole" to measure against. Indefinite/chronic
-/// medications are represented in the today hero card above instead.
+/// This is a single combined "오늘"/"전체 기간" reading across every
+/// medication with a defined course period, not a per-medication list — no
+/// individual medication name is shown, since both numbers are totals.
+/// Indefinite/chronic medications are represented in the today hero card
+/// above instead.
 class _AchievementSummaryStrip extends StatelessWidget {
   final List<MedicationItem> items;
   const _AchievementSummaryStrip({required this.items});
@@ -631,15 +631,26 @@ class _AchievementSummaryStrip extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 150,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              itemCount: courseItems.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) =>
-                  _AchievementMiniCard(item: courseItems[index], onTap: () => _openFull(context)),
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _openFull(context),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _MiniBarRow(label: '전체 기간', rate: aggregateCourseRateFor(courseItems)),
+                  const SizedBox(height: 8),
+                  _MiniBarRow(label: '오늘', rate: aggregateTodayRateFor(courseItems)),
+                ],
+              ),
             ),
           ),
         ],
@@ -648,99 +659,20 @@ class _AchievementSummaryStrip extends StatelessWidget {
   }
 }
 
-/// One medication's course status shrunk to card-sized: whole-course and
-/// today slide bars with their percentages, D-day/완주 badge, and current
-/// streak — the same facts as [AchievementScreen]'s full card, just dense
-/// enough to fit several in a horizontal strip. Only ever built for
-/// medications with a defined course period (see [_AchievementSummaryStrip]).
-class _AchievementMiniCard extends StatelessWidget {
-  final MedicationItem item;
-  final VoidCallback onTap;
-  const _AchievementMiniCard({required this.item, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final rate = adherenceRateFor(item);
-    final streak = currentStreakFor(item);
-    final completed = isCourseCompleted(item);
-
-    final String badgeText;
-    if (completed) {
-      badgeText = '완주';
-    } else {
-      final remaining = daysBetween(dateOnly(DateTime.now()), dateOnly(item.courseEndDate!));
-      badgeText = remaining >= 0 ? 'D-$remaining' : 'D+${-remaining}';
-    }
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Container(
-        width: 116,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: completed ? scheme.primary : Theme.of(context).dividerColor,
-            width: completed ? 1.6 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              item.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              badgeText,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: completed ? scheme.primary : scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('전체 코스', style: TextStyle(fontSize: 9.5, color: scheme.onSurfaceVariant)),
-            const SizedBox(height: 2),
-            // Driven by the real rate, not by whether the course's date
-            // range has ended — that says nothing about whether every dose
-            // in it was actually taken.
-            _MiniBarRow(rate: rate),
-            const SizedBox(height: 6),
-            Text('오늘', style: TextStyle(fontSize: 9.5, color: scheme.onSurfaceVariant)),
-            const SizedBox(height: 2),
-            _MiniBarRow(rate: todayExecutionRateFor(item)),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(Icons.local_fire_department_outlined, size: 11, color: scheme.onSurfaceVariant),
-                const SizedBox(width: 2),
-                Text(
-                  '$streak일',
-                  style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A compact slide bar + percentage — used for both the mini card's
-/// whole-course and today rates so they read as the same visual language.
+/// A progress bar on the left with its label + percentage grouped into a
+/// same-size block on the right — used for both the aggregate "오늘" and
+/// "전체 기간" rates so they read as the same visual language and line up
+/// identically regardless of value ("45%" vs "100%" no longer changes the
+/// bar's width, since the block next to it is now a fixed size).
 class _MiniBarRow extends StatelessWidget {
+  final String label;
   final double? rate;
-  const _MiniBarRow({required this.rate});
+  const _MiniBarRow({required this.label, required this.rate});
+
+  // Sized for the longest realistic single line ("전체 기간 100%") at these
+  // font sizes, now that label + percentage sit side by side instead of
+  // stacked across two lines.
+  static const _blockWidth = 104.0;
 
   @override
   Widget build(BuildContext context) {
@@ -753,24 +685,42 @@ class _MiniBarRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: rate ?? 0,
-              minHeight: 6,
+              minHeight: 12,
               color: scheme.primary,
               backgroundColor: scheme.primary.withValues(alpha: 0.15),
             ),
           ),
         ),
-        const SizedBox(width: 6),
-        // Fixed width regardless of the text's own length ("45%" vs
-        // "100%") — otherwise the bar next to a wider value like 100%
-        // silently gets less room than one next to a narrower value,
-        // making two bars meant to read as the same scale look different
-        // sizes.
-        SizedBox(
-          width: 30,
-          child: Text(
-            rate == null ? '-' : '${(rate * 100).round()}%',
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: scheme.onSurface),
+        const SizedBox(width: 8),
+        Container(
+          width: _blockWidth,
+          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                rate == null ? '-' : '${(rate * 100).round()}%',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
           ),
         ),
       ],

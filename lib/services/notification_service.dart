@@ -65,6 +65,18 @@ class NotificationService {
       description: '또렷한 알림음과 진동으로 복약 시간을 알려줍니다',
       soundResource: 'alert_alarm',
     ),
+    AlarmStyle.voiceGeorge: _ChannelSpec(
+      id: 'medication_alarm_voice_george_v2',
+      name: '복약 알람 (남성 목소리1)',
+      description: '남성 목소리1과 진동으로 복약 시간을 알려줍니다',
+      soundResource: 'voice_george',
+    ),
+    AlarmStyle.voiceElara: _ChannelSpec(
+      id: 'medication_alarm_voice_elara_v2',
+      name: '복약 알람 (여성 목소리1)',
+      description: '여성 목소리1과 진동으로 복약 시간을 알려줍니다',
+      soundResource: 'voice_elara',
+    ),
   };
 
   Future<void> init() async {
@@ -200,6 +212,36 @@ class NotificationService {
           priority: Priority.max,
           category: AndroidNotificationCategory.alarm,
           audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+    );
+  }
+
+  /// Fires an immediate notification on [style]'s own channel — lets the
+  /// user hear (or feel, for vibration) an alarm style before picking it,
+  /// via the exact same channel/sound/vibration real medication alarms use.
+  Future<void> previewAlarmStyle(AlarmStyle style) async {
+    final spec = _channels[style]!;
+    await _plugin.show(
+      _stableId('preview', style.name),
+      '${spec.name} 미리듣기',
+      spec.description,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          spec.id,
+          spec.name,
+          channelDescription: spec.description,
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          playSound: spec.soundResource != null,
+          sound: spec.soundResource == null
+              ? null
+              : RawResourceAndroidNotificationSound(spec.soundResource!),
+          enableVibration: true,
+          vibrationPattern: _vibrationPattern,
         ),
         iOS: const DarwinNotificationDetails(),
       ),

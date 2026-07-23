@@ -16,28 +16,38 @@ void main() {
   const capsuleRed = (r: 229, g: 57, b: 53);
   const capsuleWhite = (r: 255, g: 255, b: 255);
   const divider = (r: 200, g: 200, b: 200);
-  const tabletWhite = (r: 255, g: 255, b: 255);
-  const tabletBorder = (r: 205, g: 205, b: 205);
-  const tabletScoreLine = (r: 205, g: 205, b: 205);
+  // A solid blue (not white) so the tablet stays clearly visible against
+  // both a transparent/light launcher background and the capsule's white
+  // half, instead of blending into either.
+  const tabletBlue = (r: 66, g: 133, b: 244);
+  const tabletBorder = (r: 30, g: 90, b: 190);
+  const tabletScoreLine = (r: 30, g: 90, b: 190);
 
   final cx = size / 2;
   final cy = size / 2;
-  const halfLength = 260.0; // distance from center to each rounded end
-  const radius = 150.0; // capsule thickness / end-cap radius
-  const dividerHalfWidth = 6.0;
+  // Both shapes are scaled up 35% from the original design (halfLength 260,
+  // radius 150, tablet offset/radius 150/140) while keeping their relative
+  // proportions and composition — everything below is just those originals
+  // times 1.35.
+  const scale = 1.35;
+  const halfLength = 260.0 * scale; // distance from center to each rounded end
+  const radius = 150.0 * scale; // capsule thickness / end-cap radius
+  const dividerHalfWidth = 6.0 * scale;
   const angle = -math.pi / 4; // tilt like the classic pill emoji
   final cosA = math.cos(angle);
   final sinA = math.sin(angle);
 
-  // A round white tablet sits in front of the capsule, overlapping it —
+  // A round blue tablet sits in front of the capsule, overlapping it —
   // drawn/checked first below so it wins over the capsule wherever the two
-  // shapes overlap, with a thin border so it still reads as its own shape
-  // against the capsule's white half.
-  final tabletCx = cx + 150;
-  final tabletCy = cy + 150;
-  const tabletRadius = 140.0;
-  const tabletBorderWidth = 8.0;
-  const scoreLineHalfWidth = 5.0;
+  // shapes overlap. It gets an extra 30% on top of the shared `scale` (its
+  // position stays put — only its own size grows), since it's meant to
+  // stand out more than the capsule.
+  const tabletScale = 1.3;
+  final tabletCx = cx + 150 * scale;
+  final tabletCy = cy + 150 * scale;
+  const tabletRadius = 140.0 * scale * tabletScale;
+  const tabletBorderWidth = 8.0 * scale * tabletScale;
+  const scoreLineHalfWidth = 5.0 * scale * tabletScale;
 
   for (int y = 0; y < size; y++) {
     for (int x = 0; x < size; x++) {
@@ -61,7 +71,7 @@ void main() {
       if (inTablet) {
         final color = inTabletBorder
             ? tabletBorder
-            : (tdy.abs() < scoreLineHalfWidth ? tabletScoreLine : tabletWhite);
+            : (tdy.abs() < scoreLineHalfWidth ? tabletScoreLine : tabletBlue);
         icon.setPixelRgba(x, y, color.r, color.g, color.b, 255);
       } else if (inMiddle || inCap) {
         final color = rx.abs() < dividerHalfWidth
