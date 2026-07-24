@@ -587,11 +587,11 @@ class _TodayHeroCard extends StatelessWidget {
 /// behind the trophy icon, it should be one of the first things visible when
 /// the app opens. Tapping opens [AchievementScreen] for the full view.
 ///
-/// This is a single combined "오늘"/"전체 기간" reading across every
-/// medication with a defined course period, not a per-medication list — no
-/// individual medication name is shown, since both numbers are totals.
-/// Indefinite/chronic medications are represented in the today hero card
-/// above instead.
+/// This is a single combined "전체 기간" reading across every medication with
+/// a defined course period, not a per-medication list — no individual
+/// medication name is shown, since the number is a total. There's no "오늘"
+/// reading here since that's already covered by the today hero card above.
+/// Indefinite/chronic medications are represented in that hero card too.
 class _AchievementSummaryStrip extends StatelessWidget {
   final List<MedicationItem> items;
   const _AchievementSummaryStrip({required this.items});
@@ -642,15 +642,7 @@ class _AchievementSummaryStrip extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Theme.of(context).dividerColor),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _MiniBarRow(label: '전체 기간', rate: aggregateCourseRateFor(courseItems)),
-                  const SizedBox(height: 8),
-                  _MiniBarRow(label: '오늘', rate: aggregateTodayRateFor(courseItems)),
-                ],
-              ),
+              child: _MiniBarRow(label: '전체 기간', rate: aggregateCourseRateFor(courseItems)),
             ),
           ),
         ],
@@ -660,10 +652,9 @@ class _AchievementSummaryStrip extends StatelessWidget {
 }
 
 /// A progress bar on the left with its label + percentage grouped into a
-/// same-size block on the right — used for both the aggregate "오늘" and
-/// "전체 기간" rates so they read as the same visual language and line up
-/// identically regardless of value ("45%" vs "100%" no longer changes the
-/// bar's width, since the block next to it is now a fixed size).
+/// same-size block on the right, so the percentage lines up identically
+/// regardless of value ("45%" vs "100%" no longer changes the bar's width,
+/// since the block next to it is now a fixed size).
 class _MiniBarRow extends StatelessWidget {
   final String label;
   final double? rate;

@@ -55,7 +55,10 @@ class AchievementScreen extends StatelessWidget {
   }
 }
 
-/// The two aggregate bars, each spanning the full width.
+/// The full-width aggregate bar. "오늘" used to have its own bar here too,
+/// but that duplicated the today progress already shown at the top of the
+/// main medication list screen, so this card now only covers the whole
+/// course period.
 class _AggregateRateCard extends StatelessWidget {
   final List<MedicationItem> items;
   const _AggregateRateCard({required this.items});
@@ -69,14 +72,7 @@ class _AggregateRateCard extends StatelessWidget {
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _RateBlockBar(label: '전체 기간', rate: aggregateCourseRateFor(items)),
-          const SizedBox(height: 16),
-          _RateBlockBar(label: '오늘', rate: aggregateTodayRateFor(items)),
-        ],
-      ),
+      child: _RateBlockBar(label: '전체 기간', rate: aggregateCourseRateFor(items)),
     );
   }
 }

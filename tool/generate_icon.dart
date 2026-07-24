@@ -18,10 +18,11 @@ void main() {
   const divider = (r: 200, g: 200, b: 200);
   // A solid blue (not white) so the tablet stays clearly visible against
   // both a transparent/light launcher background and the capsule's white
-  // half, instead of blending into either.
-  const tabletBlue = (r: 66, g: 133, b: 244);
-  const tabletBorder = (r: 30, g: 90, b: 190);
-  const tabletScoreLine = (r: 30, g: 90, b: 190);
+  // half, instead of blending into either. Softer/less saturated than the
+  // original Google-blue so it's easier on the eyes at a glance.
+  const tabletBlue = (r: 112, g: 173, b: 219);
+  const tabletBorder = (r: 68, g: 122, b: 168);
+  const tabletScoreLine = (r: 68, g: 122, b: 168);
 
   final cx = size / 2;
   final cy = size / 2;
@@ -69,9 +70,10 @@ void main() {
           inTablet && tabletDistSq > (tabletRadius - tabletBorderWidth) * (tabletRadius - tabletBorderWidth);
 
       if (inTablet) {
-        final color = inTabletBorder
-            ? tabletBorder
-            : (tdy.abs() < scoreLineHalfWidth ? tabletScoreLine : tabletBlue);
+        // Cross-shaped score line (both a horizontal and a vertical groove)
+        // so the tablet reads as a quarterable pill instead of a plain disc.
+        final onScoreLine = tdy.abs() < scoreLineHalfWidth || tdx.abs() < scoreLineHalfWidth;
+        final color = inTabletBorder ? tabletBorder : (onScoreLine ? tabletScoreLine : tabletBlue);
         icon.setPixelRgba(x, y, color.r, color.g, color.b, 255);
       } else if (inMiddle || inCap) {
         final color = rx.abs() < dividerHalfWidth
